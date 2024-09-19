@@ -1,3 +1,4 @@
+import os
 import argparse
 import warnings
 import torch
@@ -21,7 +22,7 @@ warnings.filterwarnings('ignore', category=UserWarning, message='TypedStorage is
 torch.set_float32_matmul_precision('medium') # can be medium (bfloat16), high (tensorfloat32), highest (float32)
 
 
-def to_device(data, device):
+def to_device(data, device, tokenizer):
     # data[0] = data[0].to(device)
     data[0].x = data[0].x.to(device, dtype=torch.long)
     data[0].edge_index = data[0].edge_index.to(device, dtype=torch.long)
@@ -29,6 +30,10 @@ def to_device(data, device):
     data[0].batch = data[0].batch.to(device, dtype=torch.long)
     for k, v in data[1].items():
         data[1][k] = v.to(device)
+    if type(data[2]) == tuple: # Assume tuple of texts
+        data = list(data)
+        data[2] = tokenizer.batch_encode_plus(data[2], padding=True, return_tensors='pt')
+        data = tuple(data)
     for k, v in data[2].items():
         data[2][k] = v.to(device)
     # data_device = tuple([d.to(device, dtype=torch.bfloat16) for d in data])
@@ -40,7 +45,7 @@ def value_to_color(value):
     return (1.0 - value, 1.0, 1.0 - value) # The higher the value, the closer to
 
 
-def visualize_attention_heatmaps_in_one(attention_maps, idx):
+def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir):
     """
     attention_maps: numpy array of shape [batch_size, num_queries, num_keys]
     Visualizes all attention maps in one figure with subplots.
@@ -67,11 +72,11 @@ def visualize_attention_heatmaps_in_one(attention_maps, idx):
             xtick_labels[xticks.tolist().index(0)] = 'GR'
         ax.set_xticklabels(xtick_labels, fontsize=6)
         plt.tight_layout()
-        plt.savefig(f"analysis_results/finetune/attention_maps/attention_maps_{instance_i}.png", dpi=300)
+        plt.savefig(f"{root_dir}/cross_attention_maps/attention_maps_{instance_i}.png", dpi=300)
         plt.close()
 
 
-def visulize_molecule_graphs(attention_scores, graphs, idx):
+def visulize_molecule_graphs(attention_scores, graphs, idx, root_dir):
     batch_size = len(graphs)
     for graph_i in range(batch_size):
         graph = graphs[graph_i]
@@ -99,7 +104,7 @@ def visulize_molecule_graphs(attention_scores, graphs, idx):
         drawer.FinishDrawing()
         img = drawer.GetDrawingText()
         img = Image.open(BytesIO(img))
-        img.save(f"analysis_results/finetune/molecule_highlights/molecule_{idx*batch_size+graph_i}.png")
+        img.save(f"{root_dir}/molecule_highlights/molecule_{idx*batch_size+graph_i}.png")
 
 
 def scatter_attention_textlen(attention_scores, graphs, idx):
@@ -116,7 +121,7 @@ def scatter_attention_textlen(attention_scores, graphs, idx):
     return attscore_diffs, text_lens
 
 
-def visualize_generation_attention_heatmaps(tokenizer, gen_attentions, idx, batch, target_start_idx):
+def visualize_generation_attention_heatmaps(tokenizer, gen_attentions, idx, batch, target_start_idx, root_dir):
     _, prompt_tokens, text_tokens = batch
     batch_size = gen_attentions.size(0)
     for i in range(batch_size):
@@ -148,18 +153,31 @@ def visualize_generation_attention_heatmaps(tokenizer, gen_attentions, idx, batc
         plt.xticks(range(len(gen_text_list)), gen_text_list, fontsize=3, rotation=90)
         plt.yticks(range(len(input_text_list)), input_text_list, fontsize=6)
         plt.tight_layout()
-        plt.savefig(f"analysis_results/finetune/gen_attention_maps/attention_maps_{instance_i}.png", dpi=300)
+        plt.savefig(f"{root_dir}/gen_attention_maps/attention_maps_{instance_i}.png", dpi=300)
         plt.close()
         
 
 
 def main(args):
     model = Blip2Stage2(args)
-    ckpt = torch.load("all_checkpoints/ft_pubchem324k_origin/last.ckpt", map_location='cpu')
+    ckpt = torch.load(args.checkpoint, map_location='cpu')
     model.load_state_dict(ckpt['state_dict'], strict=False)
     model.eval()
     # model.to(torch.bfloat16).to('cuda')
     model.to('cuda')
+
+    checkpoint_name = args.checkpoint.split("/")[-2]
+    analysis_root_dir = f"analysis_results/{checkpoint_name}"
+    analysis_dirs = [
+        f"{analysis_root_dir}/cross_attention_maps",
+        f"{analysis_root_dir}/gen_attention_maps",
+        f"{analysis_root_dir}/molecule_highlights",
+        f"{analysis_root_dir}/scatter_plots",
+    ]
+    os.makedirs("analysis_results", exist_ok=True)
+    os.makedirs(analysis_root_dir, exist_ok=True)
+    for analysis_dir in analysis_dirs:
+        os.makedirs(analysis_dir, exist_ok=True)
     
     blip2opt = model.blip2opt
     tokenizer = model.blip2opt.opt_tokenizer
@@ -177,8 +195,8 @@ def main(args):
     attscore_diffs_all = []
     text_lens_all = []
 
-    for i, batch in tqdm(enumerate(train_loader), total=len(train_loader)):
-        batch = to_device(batch, device)
+    for i, batch in tqdm(enumerate(test_loader), total=len(test_loader)):
+        batch = to_device(batch, device, tokenizer)
         res = blip2opt(batch)
         cross_attentions = res['cross_attentions']
         target_start_idx = res['target_start_idx']
@@ -192,12 +210,12 @@ def main(args):
 
         if i < 10:
             # 1. Visualize attention heatmaps for all query tokens
-            visualize_attention_heatmaps_in_one(mean_cross_attentions.cpu().detach().numpy(), i)
+            visualize_attention_heatmaps_in_one(mean_cross_attentions.cpu().detach().numpy(), i, analysis_root_dir)
 
             # 2. Visualize attention scores on molecule graphs
-            visulize_molecule_graphs(attention_scores.cpu().detach().numpy(), batch[0], i)
+            visulize_molecule_graphs(attention_scores.cpu().detach().numpy(), batch[0], i, analysis_root_dir)
 
-            visualize_generation_attention_heatmaps(tokenizer, gen_attentions, i, batch, target_start_idx)
+            visualize_generation_attention_heatmaps(tokenizer, gen_attentions, i, batch, target_start_idx, analysis_root_dir)
 
         # 3. Scatter plot of attention score differences and text lengths
         attscore_diffs, text_lens = scatter_attention_textlen(attention_scores.cpu().detach().numpy(), batch[0], i)
@@ -213,7 +231,7 @@ def main(args):
     plt.scatter(text_lens_all, attscore_diffs_all)
     plt.xlabel("Text length")
     plt.ylabel("Attention score difference")
-    plt.savefig("analysis_results/finetune/scatter_plots/scatter_plot.png")
+    plt.savefig(f"{analysis_root_dir}/scatter_plots/scatter_plot.png")
 
     print()
 
@@ -241,6 +259,18 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     args.batch_size = 16
+    args.root = "data/PubChem324kV2/"
+    args.devies = "0"
+    args.filename = "ft_pubchem324k"
+    args.checkpoint = "all_checkpoints/ft_pubchem324k_origin/last.ckpt"
+    args.opt_model = "facebook/galactica-1.3b"
+    args.max_epochs = 100
+    args.mode = "ft"
+    args.prompt = "[START_I_SMILES]{}[END_I_SMILES]. "
+    args.tune_gnn = True
+    args.llm_tune = "lora"
+    args.inference_batch_size = 8
+
 
     print("=========================================")
     for k, v in sorted(vars(args).items()):

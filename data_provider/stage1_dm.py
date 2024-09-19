@@ -73,6 +73,7 @@ class Stage1DM(LightningDataModule):
             self.train_dataset = MoleculeCaptionV2(root+'pretrain.pt', text_max_len)
             self.val_dataset = MoleculeCaptionV2(root + 'valid.pt', text_max_len)
             self.val_dataset_match = MoleculeCaptionV2(root + 'valid.pt', text_max_len).shuffle()
+            self.test_dataset = MoleculeCaptionV2(root + 'test.pt', text_max_len)
             self.test_dataset_match = MoleculeCaptionV2(root + 'test.pt', text_max_len).shuffle()
             self.val_match_loader = DataLoader(self.val_dataset_match, batch_size=self.match_batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=False, drop_last=False, persistent_workers=True, collate_fn=TrainCollater(self.tokenizer, text_max_len))
             self.test_match_loader = DataLoader(self.test_dataset_match, batch_size=self.match_batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=False, drop_last=False, persistent_workers=True, collate_fn=TrainCollater(self.tokenizer, text_max_len))

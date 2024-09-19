@@ -1,3 +1,4 @@
+import os
 import argparse
 import warnings
 import torch
@@ -37,7 +38,7 @@ def value_to_color(value):
     return (1.0 - value, 1.0, 1.0 - value) # The higher the value, the closer to
 
 
-def visualize_attention_heatmaps_in_one(attention_maps, idx):
+def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir):
     """
     attention_maps: numpy array of shape [batch_size, num_queries, num_keys]
     Visualizes all attention maps in one figure with subplots.
@@ -64,11 +65,11 @@ def visualize_attention_heatmaps_in_one(attention_maps, idx):
             xtick_labels[xticks.tolist().index(0)] = 'GR'
         ax.set_xticklabels(xtick_labels, fontsize=6)
         plt.tight_layout()
-        plt.savefig(f"analysis_results/stage1/attention_maps/attention_maps_{instance_i}.png", dpi=300)
+        plt.savefig(f"{root_dir}/cross_attention_maps/attention_maps_{instance_i}.png", dpi=300)
         plt.close()
 
 
-def visulize_molecule_graphs(attention_scores, graphs, idx):
+def visulize_molecule_graphs(attention_scores, graphs, idx, root_dir):
     batch_size = len(graphs)
     for graph_i in range(batch_size):
         graph = graphs[graph_i]
@@ -96,7 +97,7 @@ def visulize_molecule_graphs(attention_scores, graphs, idx):
         drawer.FinishDrawing()
         img = drawer.GetDrawingText()
         img = Image.open(BytesIO(img))
-        img.save(f"analysis_results/stage1/molecule_highlights/molecule_{idx*batch_size+graph_i}.png")
+        img.save(f"{root_dir}/molecule_highlights/molecule_{idx*batch_size+graph_i}.png")
 
 
 def scatter_attention_textlen(attention_scores, graphs, idx):
@@ -116,9 +117,21 @@ def scatter_attention_textlen(attention_scores, graphs, idx):
 
 
 def main(args):
-    model = Blip2Stage1.load_from_checkpoint("all_checkpoints/stage1/last.ckpt", device=args.devices, args=args)
+    model = Blip2Stage1.load_from_checkpoint(args.checkpoint, device=args.devices, args=args)
     model.eval()
-    
+
+    checkpoint_name = args.checkpoint.split("/")[-2]
+    analysis_root_dir = f"analysis_results/{checkpoint_name}"
+    analysis_dirs = [
+        f"{analysis_root_dir}/cross_attention_maps",
+        f"{analysis_root_dir}/molecule_highlights",
+        f"{analysis_root_dir}/scatter_plots",
+    ]
+    os.makedirs("analysis_results", exist_ok=True)
+    os.makedirs(analysis_root_dir, exist_ok=True)
+    for analysis_dir in analysis_dirs:
+        os.makedirs(analysis_dir, exist_ok=True)
+
     blip2qformer = model.blip2qformer
     tokenizer = model.blip2qformer.tokenizer
     device = blip2qformer.gtm_head.bias.device
@@ -129,8 +142,8 @@ def main(args):
         dm = Stage1DM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, tokenizer,
                       args)
     train_dataset = dm.train_dataset
-    val_dataset = dm.val_dataset_match
-    test_dataset = dm.test_dataset_match
+    val_dataset = dm.val_dataset
+    test_dataset = dm.test_dataset
 
     train_loader = DataLoader(train_dataset, batch_size=args.match_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=False, drop_last=False, persistent_workers=True, collate_fn=TrainCollater(tokenizer, args.text_max_len))
 
@@ -141,7 +154,7 @@ def main(args):
     attscore_diffs_all = []
     text_lens_all = []
 
-    for i, batch in tqdm(enumerate(train_loader), total=len(train_loader)):
+    for i, batch in tqdm(enumerate(test_loader), total=len(test_loader)):
         batch = to_device(batch, device)
         graph, text, mask = batch
         batch_node, batch_mask = blip2qformer.graph_encoder(graph) # Graph Encoder in the paper
@@ -167,10 +180,10 @@ def main(args):
 
         if i < 10:
             # 1. Visualize attention heatmaps for all query tokens
-            visualize_attention_heatmaps_in_one(mean_cross_attentions.cpu().detach().numpy(), i)
+            visualize_attention_heatmaps_in_one(mean_cross_attentions.cpu().detach().numpy(), i, analysis_root_dir)
             
             # 2. Visualize attention scores on molecule graphs
-            visulize_molecule_graphs(attention_scores.cpu().detach().numpy(), graph, i)
+            visulize_molecule_graphs(attention_scores.cpu().detach().numpy(), graph, i, analysis_root_dir)
         
         # 3. Scatter plot of attention score differences and text lengths
         attscore_diffs, text_lens = scatter_attention_textlen(attention_scores.cpu().detach().numpy(), graph, i)
@@ -186,7 +199,7 @@ def main(args):
     plt.scatter(text_lens_all, attscore_diffs_all)
     plt.xlabel("Text length")
     plt.ylabel("Attention score difference")
-    plt.savefig("analysis_results/stage1/scatter_plots/scatter_plot.png")
+    plt.savefig(f"{analysis_root_dir}/scatter_plots/scatter_plot.png")
 
 
 
@@ -227,6 +240,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     args.match_batch_size = 16
+    args.root = "data/PubChem324kV2/"
+    args.devices = "0"
+    args.gtm = True
+    args.lm = True
+    args.mode = "train"
+    args.filename = "stage1"
+    args.rerank_cand_num = 128
+    args.num_query_token = 8
+    args.tune_gnn = True
+    args.checkpoint = "all_checkpoints/stage1_origin/last.ckpt"
 
     print("=========================================")
     for k, v in sorted(vars(args).items()):
