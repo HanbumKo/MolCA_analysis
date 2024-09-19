@@ -1,0 +1,12 @@
+kvplm_pretrained
+__pycache__
+test*
+log*
+*.sh.e*
+*.sh.o*
+.d*
+llms
+Text2graph
+analysis_results/
+analysis_results_origin/
+.vscode/
