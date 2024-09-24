@@ -248,7 +248,8 @@ class Blip2Stage2(pl.LightningModule):
         try:
             dist.all_gather_object(all_predictions, predictions)
             dist.all_gather_object(all_targets, targets)
-        except RuntimeError:
+        # except RuntimeError:
+        except:
             all_predictions = [predictions]
             all_targets = [targets]
 

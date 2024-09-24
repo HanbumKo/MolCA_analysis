@@ -34,7 +34,7 @@ def main(args):
     pl.seed_everything(args.seed)
     # model
     if args.init_checkpoint:
-        model = Blip2Stage2.load_from_checkpoint(args.init_checkpoint, strict=False, args=args)
+        model = Blip2Stage2.load_from_checkpoint(args.init_checkpoint, strict=False, args=args, map_location="cuda")
         print(f"loaded init checkpoint from {args.init_checkpoint}")
     elif args.stage2_path:
         model = Blip2Stage2(args)

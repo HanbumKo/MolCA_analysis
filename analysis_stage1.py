@@ -117,7 +117,7 @@ def scatter_attention_textlen(attention_scores, graphs, idx):
 
 
 def main(args):
-    model = Blip2Stage1.load_from_checkpoint(args.checkpoint, device=args.devices, args=args)
+    model = Blip2Stage1.load_from_checkpoint(args.checkpoint, device=args.devices, args=args, map_location="cuda")
     model.eval()
 
     checkpoint_name = args.checkpoint.split("/")[-2]
@@ -249,7 +249,7 @@ if __name__ == "__main__":
     args.rerank_cand_num = 128
     args.num_query_token = 8
     args.tune_gnn = True
-    args.checkpoint = "all_checkpoints/stage1_origin/last.ckpt"
+    args.checkpoint = "all_checkpoints/stage1_keyword_random/last.ckpt"
 
     print("=========================================")
     for k, v in sorted(vars(args).items()):

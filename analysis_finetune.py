@@ -142,6 +142,10 @@ def visualize_generation_attention_heatmaps(tokenizer, gen_attentions, idx, batc
         input_text_list = [t.replace('Ġ', '') for t in input_text_list]
         gen_text_list = [t.replace('Ġ', '') for t in gen_text_list]
 
+        max_text_len = 30
+        gen_attention = gen_attention[:max_text_len, :]
+        gen_text_list = gen_text_list[:max_text_len]
+
         plt.figure(figsize=(6, 6))
         heatmap = plt.imshow(gen_attention.transpose(0, 1).cpu().float().detach().numpy(), cmap='viridis', aspect='auto')
         cbar = plt.colorbar(heatmap)
@@ -159,9 +163,11 @@ def visualize_generation_attention_heatmaps(tokenizer, gen_attentions, idx, batc
 
 
 def main(args):
-    model = Blip2Stage2(args)
-    ckpt = torch.load(args.checkpoint, map_location='cpu')
-    model.load_state_dict(ckpt['state_dict'], strict=False)
+    # model = Blip2Stage2(args)
+    # ckpt = torch.load(args.checkpoint, map_location='cpu')
+    # model.load_state_dict(ckpt['state_dict'], strict=False)
+
+    model = Blip2Stage2.load_from_checkpoint(args.checkpoint, strict=False, args=args, map_location="cuda")
     model.eval()
     # model.to(torch.bfloat16).to('cuda')
     model.to('cuda')

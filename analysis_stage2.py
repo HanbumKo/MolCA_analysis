@@ -141,6 +141,10 @@ def visualize_generation_attention_heatmaps(tokenizer, gen_attentions, idx, batc
         gen_text_list = tokenizer.convert_ids_to_tokens(text_token_ids[:text_end_idx+1])
         input_text_list = [t.replace('Ġ', '') for t in input_text_list]
         gen_text_list = [t.replace('Ġ', '') for t in gen_text_list]
+        
+        max_text_len = 30
+        gen_attention = gen_attention[:max_text_len, :]
+        gen_text_list = gen_text_list[:max_text_len]
 
         plt.figure(figsize=(6, 6))
         # heatmap = plt.imshow(gen_attention.transpose(0, 1).cpu().float().detach().numpy(), cmap='viridis', aspect='auto')
@@ -162,9 +166,11 @@ def visualize_generation_attention_heatmaps(tokenizer, gen_attentions, idx, batc
 
 
 def main(args):
-    model = Blip2Stage2(args)
-    ckpt = torch.load(args.checkpoint, map_location='cpu')
-    model.load_state_dict(ckpt['state_dict'], strict=False)
+    # model = Blip2Stage2(args)
+    # ckpt = torch.load(args.checkpoint, map_location='cpu')
+    # model.load_state_dict(ckpt['state_dict'], strict=False)
+
+    model = Blip2Stage2.load_from_checkpoint(args.checkpoint, strict=False, args=args, map_location="cuda")
     model.eval()
     # model.to(torch.bfloat16).to('cuda')
     model.to('cuda')
@@ -273,8 +279,9 @@ if __name__ == "__main__":
     args.max_epochs = 10
     args.mode = "pretrain"
     args.prompt = "[START_I_SMILES]{}[END_I_SMILES]."
+    # args.prompt = "Here is a SMILES formula:\n[START_I_SMILES]{}[END_I_SMILES]."
     args.tune_gnn = True
-    args.llm_tune = "freeze"
+    args.llm_tune = "lora"
     args.inference_batch_size = 4
 
     print("=========================================")

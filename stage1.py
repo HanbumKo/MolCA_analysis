@@ -23,7 +23,7 @@ def main(args):
 
     # model
     if args.init_checkpoint:
-        model = Blip2Stage1.load_from_checkpoint(args.init_checkpoint, device=args.devices, args=args)
+        model = Blip2Stage1.load_from_checkpoint(args.init_checkpoint, device=args.devices, args=args, map_location="cuda")
         print(f"loading model from {args.init_checkpoint}")
     else:
         model = Blip2Stage1(args)
@@ -33,7 +33,7 @@ def main(args):
     tokenizer = model.blip2qformer.tokenizer
     # data
     if args.root.find('kv') >= 0:
-        dm = Stage1KVPLMDM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, args)
+        dm = Stage1KVPLMDM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, tokenizer, args)
     else:
         dm = Stage1DM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, tokenizer,
                       args)
@@ -41,7 +41,8 @@ def main(args):
     model.test_match_loader = dm.test_match_loader
 
     callbacks = []
-    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+    # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+    callbacks.append(plc.ModelCheckpoint(dirpath="/data/MolCA_checkpoints/"+args.filename+"/", 
                                          filename='{epoch:02d}', 
                                          every_n_epochs=args.save_every_n_epochs, 
                                          save_top_k=-1))
@@ -53,7 +54,8 @@ def main(args):
         strategy = 'auto'
         args.devices = eval(args.devices)
         print(args.devices)
-    logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
+    # logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
+    logger = CSVLogger(save_dir=f'/data/MolCA_checkpoints/{args.filename}/')
     # trainer = Trainer.from_argparse_args(args,
     #                                      callbacks=callbacks,
     #                                      strategy=strategy,

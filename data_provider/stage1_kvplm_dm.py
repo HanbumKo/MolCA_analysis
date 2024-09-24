@@ -15,6 +15,7 @@ class Stage1KVPLMDM(LightningDataModule):
         root: str = 'data/',
         text_max_len: int = 128,
         graph_aug: str = 'dnodes',
+        tokenizer=None,
         args=None,
     ):
         super().__init__()
@@ -22,8 +23,8 @@ class Stage1KVPLMDM(LightningDataModule):
         self.match_batch_size = args.match_batch_size
         self.num_workers = num_workers
         print('Loading dataset')
-        self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, args.text_aug)
-        self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, args.text_aug)
+        self.train_dataset = GINPretrainDataset(root+'/train/', text_max_len, graph_aug, args.text_aug, tokenizer)
+        self.val_dataset = GINPretrainDataset(root + '/valid/', text_max_len, graph_aug, args.text_aug, tokenizer)
         self.val_dataset_match = RetrievalDatasetKVPLM(root + '/valid/', args).shuffle()
         if args.use_phy_eval:
             self.test_dataset_match = RetrievalDatasetKVPLM(root + '/phy_data/', args).shuffle()
