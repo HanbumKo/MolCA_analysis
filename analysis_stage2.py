@@ -45,7 +45,7 @@ def value_to_color(value):
     return (1.0 - value, 1.0, 1.0 - value) # The higher the value, the closer to
 
 
-def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir):
+def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir, checkpoint_name):
     """
     attention_maps: numpy array of shape [batch_size, num_queries, num_keys]
     Visualizes all attention maps in one figure with subplots.
@@ -56,11 +56,11 @@ def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir):
         attention_map = attention_maps[i]
         attention_map = attention_map[:, attention_map[0] != 0] # Drop zero values
         plt.figure(figsize=(3, 3))
-        heatmap = plt.imshow(attention_map, cmap='viridis', aspect='auto')
+        heatmap = plt.imshow(attention_map, cmap='viridis', aspect='auto', vmin=0, vmax=0.2)
         cbar = plt.colorbar(heatmap)
         cbar.set_label('Attention score', fontsize=6)
         cbar.ax.tick_params(labelsize=6)
-        plt.title(f'Instance #{instance_i}', fontsize=8)
+        plt.title(f'{checkpoint_name}, instance #{instance_i}', fontsize=8)
         plt.xlabel('Graph node index', fontsize=6)
         plt.ylabel('Query index', fontsize=6)
         plt.tick_params(axis='both', which='major', labelsize=6)
@@ -76,7 +76,7 @@ def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir):
         plt.close()
 
 
-def visulize_molecule_graphs(attention_scores, graphs, idx, root_dir):
+def visulize_molecule_graphs(attention_scores, graphs, idx, root_dir, checkpoint_name):
     batch_size = len(graphs)
     for graph_i in range(batch_size):
         graph = graphs[graph_i]
@@ -166,11 +166,11 @@ def visualize_generation_attention_heatmaps(tokenizer, gen_attentions, idx, batc
 
 
 def main(args):
-    # model = Blip2Stage2(args)
-    # ckpt = torch.load(args.checkpoint, map_location='cpu')
-    # model.load_state_dict(ckpt['state_dict'], strict=False)
+    model = Blip2Stage2(args)
+    ckpt = torch.load(args.checkpoint, map_location='cpu')
+    model.load_state_dict(ckpt['state_dict'], strict=False)
 
-    model = Blip2Stage2.load_from_checkpoint(args.checkpoint, strict=False, args=args, map_location="cuda")
+    # model = Blip2Stage2.load_from_checkpoint(args.checkpoint, strict=False, args=args, map_location="cuda")
     model.eval()
     # model.to(torch.bfloat16).to('cuda')
     model.to('cuda')
@@ -222,12 +222,12 @@ def main(args):
 
         if i < 10:
             # 1. Visualize attention heatmaps for all query tokens
-            visualize_attention_heatmaps_in_one(mean_cross_attentions.cpu().detach().numpy(), i, analysis_root_dir)
+            visualize_attention_heatmaps_in_one(mean_cross_attentions.cpu().detach().numpy(), i, analysis_root_dir, checkpoint_name)
 
             # 2. Visualize attention scores on molecule graphs
-            visulize_molecule_graphs(attention_scores.cpu().detach().numpy(), batch[0], i, analysis_root_dir)
+            visulize_molecule_graphs(attention_scores.cpu().detach().numpy(), batch[0], i, analysis_root_dir, checkpoint_name)
             
-            visualize_generation_attention_heatmaps(tokenizer, gen_attentions, i, batch, target_start_idx, analysis_root_dir)
+            # visualize_generation_attention_heatmaps(tokenizer, gen_attentions, i, batch, target_start_idx, analysis_root_dir)
 
         # 3. Scatter plot of attention score differences and text lengths
         attscore_diffs, text_lens = scatter_attention_textlen(attention_scores.cpu().detach().numpy(), batch[0], i)
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
     parser = Stage2DM.add_model_specific_args(parser)
     parser.add_argument('--accelerator', type=str, default='gpu')
-    parser.add_argument('--devices', type=str, default='0,1,2,3')
+    parser.add_argument('--devices', type=str, default='0')
     parser.add_argument('--precision', type=str, default='bf16-mixed')
     parser.add_argument('--max_epochs', type=int, default=10)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
@@ -274,7 +274,7 @@ if __name__ == "__main__":
     args.root = "data/PubChem324kV2/"
     args.devices = "0"
     args.filename = "stage2"
-    args.checkpoint = "all_checkpoints/stage2_origin/last.ckpt"
+    args.checkpoint = "all_checkpoints/stage2_Extended/last.ckpt"
     args.opt_model = "facebook/galactica-1.3b"
     args.max_epochs = 10
     args.mode = "pretrain"

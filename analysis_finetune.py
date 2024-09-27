@@ -11,6 +11,7 @@ from io import BytesIO
 from PIL import Image
 from tqdm import tqdm
 from data_provider.stage2_dm import Stage2DM, TrainCollater
+from data_provider.iupac_dm import IupacDM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from model.blip2_stage2 import Blip2Stage2
 import matplotlib.ticker as ticker
@@ -56,7 +57,7 @@ def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir):
         attention_map = attention_maps[i]
         attention_map = attention_map[:, attention_map[0] != 0] # Drop zero values
         plt.figure(figsize=(3, 3))
-        heatmap = plt.imshow(attention_map, cmap='viridis', aspect='auto')
+        heatmap = plt.imshow(attention_map, cmap='viridis', aspect='auto', vmin=0, vmax=0.2)
         cbar = plt.colorbar(heatmap)
         cbar.set_label('Attention score', fontsize=6)
         cbar.ax.tick_params(labelsize=6)
@@ -189,10 +190,13 @@ def main(args):
     tokenizer = model.blip2opt.opt_tokenizer
     device = blip2opt.opt_proj.bias.device
     
-    if args.root.lower().find('chebi') >= 0:
-        dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+    if args.iupac_prediction:
+        dm = IupacDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     else:
-        dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        if args.root.lower().find('chebi') >= 0:
+            dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        else:
+            dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     
     train_loader = dm.train_dataloader()
     val_loader = dm.val_dataloader()
@@ -257,7 +261,7 @@ if __name__ == "__main__":
     parser = Blip2Stage2.add_model_specific_args(parser)  # add model args
     parser = Stage2DM.add_model_specific_args(parser)
     parser.add_argument('--accelerator', type=str, default='gpu')
-    parser.add_argument('--devices', type=str, default='0,1,2,3')
+    parser.add_argument('--devices', type=str, default='0')
     parser.add_argument('--precision', type=str, default='bf16-mixed')
     parser.add_argument('--max_epochs', type=int, default=10)
     parser.add_argument('--accumulate_grad_batches', type=int, default=1)
@@ -268,14 +272,17 @@ if __name__ == "__main__":
     args.root = "data/PubChem324kV2/"
     args.devies = "0"
     args.filename = "ft_pubchem324k"
-    args.checkpoint = "all_checkpoints/ft_pubchem324k_origin/last.ckpt"
+    args.checkpoint = "all_checkpoints/stage1_origin/last.ckpt"
     args.opt_model = "facebook/galactica-1.3b"
     args.max_epochs = 100
     args.mode = "ft"
     args.prompt = "[START_I_SMILES]{}[END_I_SMILES]. "
+    # args.prompt = "[START_I_SMILES]{}[END_I_SMILES]The molecule's IUPAC name is "
     args.tune_gnn = True
     args.llm_tune = "lora"
     args.inference_batch_size = 8
+
+    # args.iupac_prediction = True
 
 
     print("=========================================")
