@@ -14,6 +14,7 @@ from data_provider.stage2_dm import Stage2DM, TrainCollater
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from model.blip2_stage2 import Blip2Stage2
 import matplotlib.ticker as ticker
+from bertviz import head_view, model_view
 
 
 ## for pyg bug
@@ -45,13 +46,16 @@ def value_to_color(value):
     return (1.0 - value, 1.0, 1.0 - value) # The higher the value, the closer to
 
 
-def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir, checkpoint_name):
+def visualize_cross_attention_matplot(attention_maps, graphs, idx, root_dir, checkpoint_name):
     """
     attention_maps: numpy array of shape [batch_size, num_queries, num_keys]
     Visualizes all attention maps in one figure with subplots.
     """
     batch_size, num_queries, num_keys = attention_maps.shape
     for i in range(batch_size):
+        graph = graphs[i]
+        mol = Chem.MolFromSmiles(graph.smiles)
+        symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
         instance_i = idx * batch_size + i
         attention_map = attention_maps[i]
         attention_map = attention_map[:, attention_map[0] != 0] # Drop zero values
@@ -61,19 +65,35 @@ def visualize_attention_heatmaps_in_one(attention_maps, idx, root_dir, checkpoin
         cbar.set_label('Attention score', fontsize=6)
         cbar.ax.tick_params(labelsize=6)
         plt.title(f'{checkpoint_name}, instance #{instance_i}', fontsize=8)
-        plt.xlabel('Graph node index', fontsize=6)
+        plt.xlabel('Graph node atom', fontsize=6)
         plt.ylabel('Query index', fontsize=6)
         plt.tick_params(axis='both', which='major', labelsize=6)
         ax = plt.gca()
-        ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
-        xticks = ax.get_xticks().astype(int)
-        xtick_labels = [str(x) for x in xticks]
-        if 0 in xticks:
-            xtick_labels[xticks.tolist().index(0)] = 'GR'
-        ax.set_xticklabels(xtick_labels, fontsize=6)
+        ax.set_xticks(ticks=list(range(len(symbols)+1)), labels=["g"] + symbols, fontsize=6)
         plt.tight_layout()
         plt.savefig(f"{root_dir}/cross_attention_maps/attention_maps_{instance_i}.png", dpi=300)
         plt.close()
+
+
+def visualize_cross_attention_bertviz(cross_attention_maps, graphs, idx, root_dir, checkpoint_name):
+    batch_size, num_layers, num_heads, num_queries, _ = cross_attention_maps.shape
+    for i in range(batch_size):
+        graph = graphs[i]
+        mol = Chem.MolFromSmiles(graph.smiles)
+        symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
+        instance_i = idx * batch_size + i
+        cross_attention_map = cross_attention_maps[i:i+1, :, :, :, cross_attention_maps[i, 0, 0, 0]!=0] # Drop zero values
+        num_keys = cross_attention_map.shape[-1]
+        num_nodes = num_keys - 1
+        bertviz_cross_attention = list(cross_attention_map.transpose(0, 1))
+        decoder_tokens = [f"{i}" for i in range(num_queries)]
+        encoder_tokens = ["GR"] + symbols
+        html_obj_headview = head_view(cross_attention=bertviz_cross_attention, decoder_tokens=decoder_tokens, encoder_tokens=encoder_tokens, html_action="return")
+        html_obj_modelview = model_view(cross_attention=bertviz_cross_attention, decoder_tokens=decoder_tokens, encoder_tokens=encoder_tokens, display_mode='light', html_action="return")
+        with open(f"{root_dir}/cross_attention_headview/{instance_i}.html", "w", encoding="utf-8") as f:
+            f.write(html_obj_headview.data)
+        with open(f"{root_dir}/cross_attention_modelview/{instance_i}.html", "w", encoding="utf-8") as f:
+            f.write(html_obj_modelview.data)
 
 
 def visulize_molecule_graphs(attention_scores, graphs, idx, root_dir, checkpoint_name):
@@ -178,6 +198,8 @@ def main(args):
     checkpoint_name = args.checkpoint.split("/")[-2]
     analysis_root_dir = f"analysis_results/{checkpoint_name}"
     analysis_dirs = [
+        f"{analysis_root_dir}/cross_attention_headview",
+        f"{analysis_root_dir}/cross_attention_modelview",
         f"{analysis_root_dir}/cross_attention_maps",
         f"{analysis_root_dir}/gen_attention_maps",
         f"{analysis_root_dir}/molecule_highlights",
@@ -206,7 +228,7 @@ def main(args):
 
     for i, batch in tqdm(enumerate(test_loader), total=len(test_loader)):
         batch = to_device(batch, device, tokenizer)
-        _, prompt_tokens, text_tokens = batch
+        graph, prompt_tokens, text_tokens = batch
         res = blip2opt(batch)
         cross_attentions = res['cross_attentions']
         target_start_idx = res['target_start_idx']
@@ -222,12 +244,14 @@ def main(args):
 
         if i < 10:
             # 1. Visualize attention heatmaps for all query tokens
-            visualize_attention_heatmaps_in_one(mean_cross_attentions.cpu().detach().numpy(), i, analysis_root_dir, checkpoint_name)
+            visualize_cross_attention_matplot(mean_cross_attentions.cpu().detach().numpy(), graph, i, analysis_root_dir, checkpoint_name)
 
             # 2. Visualize attention scores on molecule graphs
-            visulize_molecule_graphs(attention_scores.cpu().detach().numpy(), batch[0], i, analysis_root_dir, checkpoint_name)
+            visulize_molecule_graphs(attention_scores.cpu().detach().numpy(), graph, i, analysis_root_dir, checkpoint_name)
             
             # visualize_generation_attention_heatmaps(tokenizer, gen_attentions, i, batch, target_start_idx, analysis_root_dir)
+
+            visualize_cross_attention_bertviz(cross_attentions.cpu().detach(), graph, i, analysis_root_dir, checkpoint_name)
 
         # 3. Scatter plot of attention score differences and text lengths
         attscore_diffs, text_lens = scatter_attention_textlen(attention_scores.cpu().detach().numpy(), batch[0], i)
@@ -282,7 +306,7 @@ if __name__ == "__main__":
     # args.prompt = "Here is a SMILES formula:\n[START_I_SMILES]{}[END_I_SMILES]."
     args.tune_gnn = True
     args.llm_tune = "lora"
-    args.inference_batch_size = 4
+    args.inference_batch_size = 16
 
     print("=========================================")
     for k, v in sorted(vars(args).items()):
