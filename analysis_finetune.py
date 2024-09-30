@@ -241,7 +241,7 @@ def main(args):
         mean_cross_attentions = cross_attentions.mean(dim=1).mean(1) # [batch_size, query_len, 1+maximum_node_num]
         attention_scores = mean_cross_attentions.mean(1)[:, 1:] # Drop the first token, which is graph representation token | [batch_size, maximum_node_num]
 
-        if i < 10:
+        if i < 2:
             # 1. Visualize attention heatmaps for all query tokens
             visualize_cross_attention_matplot(mean_cross_attentions.cpu().detach().numpy(), graph, i, analysis_root_dir)
 
@@ -305,7 +305,7 @@ if __name__ == "__main__":
     # args.prompt = "[START_I_SMILES]{}[END_I_SMILES]The molecule's IUPAC name is "
     args.tune_gnn = True
     args.llm_tune = "lora"
-    args.inference_batch_size = 16
+    args.inference_batch_size = 4
 
     # args.iupac_prediction = True
 

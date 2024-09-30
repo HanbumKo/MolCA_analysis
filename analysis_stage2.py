@@ -242,7 +242,7 @@ def main(args):
         
         
 
-        if i < 10:
+        if i < 2:
             # 1. Visualize attention heatmaps for all query tokens
             visualize_cross_attention_matplot(mean_cross_attentions.cpu().detach().numpy(), graph, i, analysis_root_dir, checkpoint_name)
 
@@ -298,7 +298,7 @@ if __name__ == "__main__":
     args.root = "data/PubChem324kV2/"
     args.devices = "0"
     args.filename = "stage2"
-    args.checkpoint = "all_checkpoints/stage2_Extended/last.ckpt"
+    args.checkpoint = "all_checkpoints/stage2_keyword_random/last.ckpt"
     args.opt_model = "facebook/galactica-1.3b"
     args.max_epochs = 10
     args.mode = "pretrain"
@@ -306,7 +306,7 @@ if __name__ == "__main__":
     # args.prompt = "Here is a SMILES formula:\n[START_I_SMILES]{}[END_I_SMILES]."
     args.tune_gnn = True
     args.llm_tune = "lora"
-    args.inference_batch_size = 16
+    args.inference_batch_size = 4
 
     print("=========================================")
     for k, v in sorted(vars(args).items()):

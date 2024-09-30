@@ -200,7 +200,7 @@ def main(args):
         mean_cross_attentions = cross_attentions.mean(dim=1).mean(1) # [batch_size, query_len, 1+maximum_node_num]
         attention_scores = mean_cross_attentions.mean(1)[:, 1:] # Drop the first token, which is graph representation token | [batch_size, maximum_node_num]
 
-        if i < 10:
+        if i < 2:
             # 1. Visualize attention heatmaps for all query tokens
             visualize_cross_attention_matplot(mean_cross_attentions.cpu().detach().numpy(), graph, i, analysis_root_dir, checkpoint_name)
             
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     #                     check_val_every_n_epoch=1)
     args = parser.parse_args()
 
-    args.match_batch_size = 16
+    args.match_batch_size = 4
     args.root = "data/PubChem324kV2/"
     args.devices = "0"
     args.gtm = True
@@ -273,7 +273,7 @@ if __name__ == "__main__":
     args.rerank_cand_num = 128
     args.num_query_token = 8
     args.tune_gnn = True
-    args.checkpoint = "all_checkpoints/stage1_Extended/last.ckpt"
+    args.checkpoint = "all_checkpoints/stage1_origin/last.ckpt"
 
     print("=========================================")
     for k, v in sorted(vars(args).items()):
