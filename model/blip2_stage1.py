@@ -16,7 +16,22 @@ class Blip2Stage1(pl.LightningModule):
         
         self.args = args
         self.rerank_cand_num = args.rerank_cand_num
-        self.blip2qformer = Blip2Qformer(args.gtm, args.lm, args.bert_name, args.temperature, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.projection_dim)
+        self.blip2qformer = Blip2Qformer(
+            args.gtm,
+            args.lm,
+            args.bert_name,
+            args.temperature,
+            args.gin_num_layers,
+            args.gin_hidden_dim,
+            args.drop_ratio,
+            args.att_reg,
+            args.att_reg_method,
+            args.att_reg_lambda,
+            args.tune_gnn,
+            args.num_query_token,
+            args.cross_attention_freq,
+            args.projection_dim,
+        )
     
         self.save_hyperparameters(args)
         
@@ -40,12 +55,16 @@ class Blip2Stage1(pl.LightningModule):
         if isinstance(self.args.devices, list) and len(self.args.devices) == 1 and self.args.mode == "eval":
             return 0
         batch_size = batch[-1].size(0)
-        blip2_loss = self.blip2qformer(batch)
+        blip2_loss, att_cos, att_kl, att_l2 = self.blip2qformer(batch)
         ###============== Overall Loss ===================###
         self.log("val_loss_gtc", float(blip2_loss.loss_itc), batch_size=batch_size, sync_dist=True)
         self.log("val_loss_gtm", float(blip2_loss.loss_itm), batch_size=batch_size, sync_dist=True)
         self.log("val_loss_lm", float(blip2_loss.loss_lm), batch_size=batch_size, sync_dist=True)
         self.log("val_loss", float(blip2_loss.loss), batch_size=batch_size, sync_dist=True)
+        self.log("val_att_cos", float(att_cos), batch_size=batch_size, sync_dist=True)
+        self.log("val_att_kl", float(att_kl), batch_size=batch_size, sync_dist=True)
+        self.log("val_att_l2", float(att_l2), batch_size=batch_size, sync_dist=True)
+
         return blip2_loss.loss
     
     def on_validation_epoch_end(self) -> None:
@@ -110,13 +129,16 @@ class Blip2Stage1(pl.LightningModule):
         self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
 
         batch_size = batch[-1].size(0)
-        blip2_loss = self.blip2qformer(batch)
+        blip2_loss, att_cos, att_kl, att_l2 = self.blip2qformer(batch)
         ###============== Overall Loss ===================###
         self.log("train_loss_gtc", float(blip2_loss.loss_itc), batch_size=batch_size, sync_dist=True)
         self.log("train_loss_gtm", float(blip2_loss.loss_itm), batch_size=batch_size, sync_dist=True)
         self.log("train_loss_lm", float(blip2_loss.loss_lm), batch_size=batch_size, sync_dist=True)
         self.log("train_loss", float(blip2_loss.loss), batch_size=batch_size, sync_dist=True)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
+        self.log("train_att_cos", float(att_cos), batch_size=batch_size, sync_dist=True)
+        self.log("train_att_kl", float(att_kl), batch_size=batch_size, sync_dist=True)
+        self.log("train_att_l2", float(att_l2), batch_size=batch_size, sync_dist=True)
         return blip2_loss.loss
 
     @staticmethod
@@ -150,6 +172,11 @@ class Blip2Stage1(pl.LightningModule):
         parser.add_argument('--scheduler', type=str, default='linear_warmup_cosine_lr', help='type of scheduler') # or linear_warmup_step_lr
         parser.add_argument('--init_checkpoint', type=str, default='')
         parser.add_argument('--retrieval_eval_epoch', type=int, default=10)
+
+        # Attention regularization
+        parser.add_argument('--att_reg', action='store_true', default=False, help='use attention regularization or not')
+        parser.add_argument('--att_reg_method', type=str, default='cos', help="type of attention regularization ['cos', 'kl', 'l2']", choices=['cos', 'kl', 'l2'])
+        parser.add_argument('--att_reg_lambda', type=float, default=0.1, help='weight of attention regularization')
         return parent_parser
 
 
