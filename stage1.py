@@ -41,8 +41,8 @@ def main(args):
     model.test_match_loader = dm.test_match_loader
 
     callbacks = []
-    # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-    callbacks.append(plc.ModelCheckpoint(dirpath="/data/MolCA_checkpoints/"+args.filename+"/", 
+    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+    # callbacks.append(plc.ModelCheckpoint(dirpath="/data/MolCA_checkpoints/"+args.filename+"/", 
                                          filename='{epoch:02d}', 
                                          every_n_epochs=args.save_every_n_epochs, 
                                          save_top_k=-1))
@@ -54,8 +54,8 @@ def main(args):
         strategy = 'auto'
         args.devices = eval(args.devices)
         print(args.devices)
-    # logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
-    logger = CSVLogger(save_dir=f'/data/MolCA_checkpoints/{args.filename}/')
+    logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
+    # logger = CSVLogger(save_dir=f'/data/MolCA_checkpoints/{args.filename}/')
     # trainer = Trainer.from_argparse_args(args,
     #                                      callbacks=callbacks,
     #                                      strategy=strategy,
@@ -63,7 +63,7 @@ def main(args):
     #                                     #  limit_train_batches=100,
     #                                      )
     # trainer = Trainer(accelerator=args.accelerator, devices=args.devices, precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger)
-    trainer = Trainer(accelerator=args.accelerator, devices=1, precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger)
+    trainer = Trainer(accelerator=args.accelerator, devices=[args.devices], precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger)
     if args.mode == 'train':
         trainer.fit(model, datamodule=dm)
     elif args.mode == 'eval':

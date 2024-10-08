@@ -75,9 +75,10 @@ def visualize_cross_attention_bertviz(cross_attention_maps, graphs, idx, root_di
         mol = Chem.MolFromSmiles(graph.smiles)
         symbols = [atom.GetSymbol() for atom in mol.GetAtoms()]
         instance_i = idx * batch_size + i
-        cross_attention_map = cross_attention_maps[i:i+1, :, :, :, cross_attention_maps[i, 0, 0, 0]!=0] # Drop zero values
+        num_keys = graph.x.shape[0] + 1
+        cross_attention_map = cross_attention_maps[i:i+1, :, :, :, :num_keys] # Drop zero values
         num_keys = cross_attention_map.shape[-1]
-        num_nodes = num_keys - 1
+        # num_nodes = num_keys - 1
         bertviz_cross_attention = list(cross_attention_map.transpose(0, 1))
         decoder_tokens = [f"{i}" for i in range(num_queries)]
         encoder_tokens = ["GR"] + symbols
@@ -273,7 +274,7 @@ if __name__ == "__main__":
     args.rerank_cand_num = 128
     args.num_query_token = 8
     args.tune_gnn = True
-    args.checkpoint = "all_checkpoints/stage1_origin/last.ckpt"
+    args.checkpoint = "all_checkpoints/stage1_origin_cos_lambda_1/epoch=19.ckpt"
 
     print("=========================================")
     for k, v in sorted(vars(args).items()):
