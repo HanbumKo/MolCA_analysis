@@ -97,6 +97,7 @@ def main(args):
     elif args.mode == 'eval':
         trainer.fit_loop.epoch_progress.current.completed = args.caption_eval_epoch - 1
         trainer.validate(model, datamodule=dm)
+        # trainer.test(model, datamodule=dm)
     else:
         raise NotImplementedError()
 

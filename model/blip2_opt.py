@@ -282,7 +282,30 @@ class Blip2OPT(Blip2Base):
         generation_attentions = outputs.attentions # (batch_size, num_heads, num_query_token, num_text_token)
         target_start_idx = (targets != -100).nonzero(as_tuple=True)[1].min().item() # Same for all samples in the batch
         
-        return {"loss": loss, "cross_attentions": query_output.cross_attentions, "generation_attentions": generation_attentions, "target_start_idx": target_start_idx}
+        
+        ###============== Attention score regularization ===================###
+        att_cos = 0
+        att_kl = 0
+        att_l2 = 0
+        cross_attentions = query_output['cross_attentions'] # Cross attention and past key values are mixed in this tuple
+        cross_attentions = [cross_attentions[i] for i in range(0, len(query_output['cross_attentions']), 2)]
+        cross_attentions = torch.stack(cross_attentions).transpose(0, 1) # [batch_size, num_cross_attentions, num_heads, query_len, 1+maximum_node_num]
+        mean_cross_attentions = cross_attentions.mean(dim=1).mean(1) # [batch_size, query_len, 1+maximum_node_num]
+        masked_feat = mean_cross_attentions * graph_masks.unsqueeze(1).float()
+
+        att_cos = self.compute_avg_cosine_similarity(masked_feat)
+        att_kl = self.compute_average_symmetrised_kl_divergence(masked_feat)
+        att_l2 = self.compute_mean_l2_distance(masked_feat)
+        
+        return {
+            "loss": loss,
+            "cross_attentions": query_output.cross_attentions,
+            "generation_attentions": generation_attentions,
+            "target_start_idx": target_start_idx,
+            "att_cos": att_cos.mean(),
+            "att_kl": att_kl.mean(),
+            "att_l2": att_l2.mean(),
+        }
 
     def forward_reaction(self, batch):
         reaction_tokens, notes_tokens, graphs = batch
@@ -700,4 +723,97 @@ class Blip2OPT(Blip2Base):
                     print(predict)
                     print(text)
             return knn_decode_strings
-            
+
+    def compute_avg_cosine_similarity(self, X):
+        # X has shape (batch_size, num_query, feature_dim)
+        # Normalize the vectors along the feature_dim dimension
+        normalized_X = X / X.norm(dim=-1, keepdim=True)
+
+        # Compute cosine similarity matrices
+        cos_sim_matrix = torch.bmm(normalized_X, normalized_X.transpose(1, 2))  # Shape: (batch_size, num_query, num_query)
+
+        # Exclude self-similarities by creating a mask
+        batch_size, num_query, _ = cos_sim_matrix.shape
+        mask = torch.eye(num_query, device=X.device).bool().unsqueeze(0).expand(batch_size, -1, -1)
+        cos_sim_matrix = cos_sim_matrix.masked_fill(mask, 0)
+
+        # Compute the average cosine similarity over all pairs excluding self-pairs
+        sum_cos_sim = cos_sim_matrix.sum(dim=(1, 2))  # Shape: (batch_size,)
+        num_pairs = num_query * (num_query - 1)
+        avg_cos_sim = sum_cos_sim / num_pairs
+
+        return avg_cos_sim  # Shape: (batch_size,)
+
+    def compute_average_symmetrised_kl_divergence(self, x):
+        """
+        Computes the average symmetrised KL divergence between all pairs of queries
+        in a tensor of shape (batch_size, num_query, feature_dim).
+
+        Parameters:
+        x (torch.Tensor): Input tensor of shape (batch_size, num_query, feature_dim).
+
+        Returns:
+        torch.Tensor: Tensor of shape (batch_size) containing the average symmetrised KL divergence
+                    for each batch.
+        """
+        batch_size, num_query, feature_dim = x.shape
+
+        # Ensure the distributions sum to 1 along the feature_dim
+        x = F.softmax(x, dim=-1)  # Shape: (batch_size, num_query, feature_dim)
+
+        # Create tensors for all pairs of queries
+        x1 = x.unsqueeze(2)  # Shape: (batch_size, num_query, 1, feature_dim)
+        x2 = x.unsqueeze(1)  # Shape: (batch_size, 1, num_query, feature_dim)
+
+        # Broadcast x1 and x2 to shape (batch_size, num_query, num_query, feature_dim)
+        # Compute KL divergences D(x1 || x2) and D(x2 || x1)
+        kl1 = (x1 * (x1.log() - x2.log())).sum(dim=-1)  # Shape: (batch_size, num_query, num_query)
+        kl2 = (x2 * (x2.log() - x1.log())).sum(dim=-1)
+
+        # Compute symmetrised KL divergence
+        skl = kl1 + kl2  # Shape: (batch_size, num_query, num_query)
+
+        # Create a mask to exclude self-divergences (diagonal elements)
+        mask = 1 - torch.eye(num_query, device=x.device).unsqueeze(0)  # Shape: (1, num_query, num_query)
+        mask = mask.expand(batch_size, -1, -1)  # Shape: (batch_size, num_query, num_query)
+
+        # Apply the mask
+        skl = skl * mask
+
+        # Compute the average over all pairs (excluding self-pairs)
+        num_pairs = num_query * (num_query - 1)
+        skl_mean = skl.sum(dim=(1, 2)) / num_pairs  # Shape: (batch_size)
+
+        return skl_mean
+
+    def compute_mean_l2_distance(self, x):
+        """
+        x: Tensor of shape (batch_size, num_query, feature_dim)
+        Returns a Tensor of shape (batch_size,) containing the mean L2 distance between all pairs of queries.
+        """
+        batch_size, num_query, feature_dim = x.shape
+
+        # Compute squared norms of each query
+        x_norm_squared = (x ** 2).sum(dim=2)  # Shape: (batch_size, num_query)
+
+        # Compute the dot product between all pairs of queries
+        prod = x @ x.transpose(1, 2)  # Shape: (batch_size, num_query, num_query)
+
+        # Compute squared distances using the formula: ||u - v||^2 = ||u||^2 - 2*u^T*v + ||v||^2
+        dist_squared = x_norm_squared.unsqueeze(2) - 2 * prod + x_norm_squared.unsqueeze(1)  # Shape: (batch_size, num_query, num_query)
+
+        # Take the square root to get L2 distances
+        dist = torch.sqrt(dist_squared + 1e-12)  # Add a small value to avoid sqrt(0)
+
+        # Create a mask to exclude self-distances (diagonal elements)
+        mask = ~torch.eye(num_query, device=x.device).bool().unsqueeze(0)  # Shape: (1, num_query, num_query)
+
+        # Apply the mask to zero out diagonal elements
+        dist = dist * mask.float()
+
+        # Sum over all distances and compute the mean
+        sum_dist = dist.sum(dim=(1, 2))  # Shape: (batch_size,)
+        num_pairs = num_query * (num_query - 1)
+        mean_dist = sum_dist / num_pairs
+
+        return mean_dist

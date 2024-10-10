@@ -298,7 +298,7 @@ if __name__ == "__main__":
     args.root = "data/PubChem324kV2/"
     args.devices = "0"
     args.filename = "stage2"
-    args.checkpoint = "all_checkpoints/stage2_origin_cos_lambda_001/last.ckpt"
+    args.checkpoint = "all_checkpoints/stage2_origin_cos_lambda_001_001/last.ckpt"
     args.opt_model = "facebook/galactica-1.3b"
     args.max_epochs = 10
     args.mode = "pretrain"

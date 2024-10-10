@@ -139,7 +139,11 @@ class Blip2Stage1(pl.LightningModule):
         self.log("train_att_cos", float(att_cos), batch_size=batch_size, sync_dist=True)
         self.log("train_att_kl", float(att_kl), batch_size=batch_size, sync_dist=True)
         self.log("train_att_l2", float(att_l2), batch_size=batch_size, sync_dist=True)
-        return blip2_loss.loss + att_cos*self.args.att_reg_lambda
+        if self.args.att_reg:
+            total_loss = blip2_loss.loss + att_cos*self.args.att_reg_lambda
+        else:
+            total_loss = blip2_loss.loss
+        return total_loss
 
     @staticmethod
     def add_model_specific_args(parent_parser):

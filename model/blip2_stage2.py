@@ -130,16 +130,20 @@ class Blip2Stage2(pl.LightningModule):
                 raise NotImplementedError()
         return optimizer
 
-    def test_epoch_end(self, outputs):
+    def on_test_epoch_end(self, outputs):
         list_predictions, list_targets = zip(*outputs)
         predictions = [i for ii in list_predictions for i in ii]
         targets = [i for ii in list_targets for i in ii]
 
         all_predictions = [None for _ in range(self.trainer.world_size)]
         all_targets = [None for _ in range(self.trainer.world_size)]
-        
-        dist.all_gather_object(all_predictions, predictions)
-        dist.all_gather_object(all_targets, targets)
+        try:
+            dist.all_gather_object(all_predictions, predictions)
+            dist.all_gather_object(all_targets, targets)
+        # except RuntimeError:
+        except:
+            all_predictions = [predictions]
+            all_targets = [targets]
         if self.global_rank == 0:
             all_predictions = [i for ii in all_predictions for i in ii]
             all_targets = [i for ii in all_targets for i in ii]
@@ -200,9 +204,18 @@ class Blip2Stage2(pl.LightningModule):
             _, _, text_tokens = batch
             batch_size = text_tokens.input_ids.shape[0]
             loss = self.blip2opt(batch)
+            att_cos = loss['att_cos']
+            att_kl = loss['att_kl']
+            att_l2 = loss['att_l2']
+            self.log("att_cos", float(att_cos), batch_size=batch_size, sync_dist=True)
+            self.log("att_kl", float(att_kl), batch_size=batch_size, sync_dist=True)
+            self.log("att_l2", float(att_l2), batch_size=batch_size, sync_dist=True)
             ###============== Overall Loss ===================###
             self.log("val molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
-            return loss['loss']
+            if self.args.att_reg:
+                return loss['loss'] + att_cos * self.args.att_reg_lambda
+            else:
+                return loss['loss']
         elif dataloader_idx == 1:
             if (self.current_epoch+1) % self.caption_eval_epoch != 0:
                 return 
@@ -288,9 +301,18 @@ class Blip2Stage2(pl.LightningModule):
             batch_size = batch[-1].input_ids.size(0)
             ###============== Overall Loss ===================###
             loss = self.blip2opt(batch)
+            att_cos = loss['att_cos']
+            att_kl = loss['att_kl']
+            att_l2 = loss['att_l2']
+            self.log("att_cos", float(att_cos), batch_size=batch_size, sync_dist=True)
+            self.log("att_kl", float(att_kl), batch_size=batch_size, sync_dist=True)
+            self.log("att_l2", float(att_l2), batch_size=batch_size, sync_dist=True)
             self.log("molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
             self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
-            return loss['loss']
+            if self.args.att_reg:
+                return loss['loss'] + att_cos * self.args.att_reg_lambda
+            else:
+                return loss['loss']
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -340,6 +362,11 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--stage2_path', type=str, default='')
         parser.add_argument('--init_checkpoint', type=str, default='')
         parser.add_argument('--caption_eval_epoch', type=int, default=10)
+        
+        # Attention regularization
+        parser.add_argument('--att_reg', action='store_true', default=False, help='use attention regularization or not')
+        parser.add_argument('--att_reg_method', type=str, default='cos', help="type of attention regularization ['cos', 'kl', 'l2']", choices=['cos', 'kl', 'l2'])
+        parser.add_argument('--att_reg_lambda', type=float, default=0.1, help='weight of attention regularization')
         return parent_parser
 
 
