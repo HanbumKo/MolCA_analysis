@@ -68,12 +68,18 @@ def main(args):
     callbacks = []
     ## fixme save only used parameters
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
+    # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+    #                                      filename='{epoch:02d}', 
+    #                                      every_n_epochs=args.save_every_n_epochs, 
+    #                                      save_last=True, 
+    #                                      save_top_k=-1,
+    #                                      save_on_train_epoch_end=True))
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-                                         filename='{epoch:02d}', 
-                                         every_n_epochs=args.save_every_n_epochs, 
-                                         save_last=True, 
-                                         save_top_k=-1,
-                                         save_on_train_epoch_end=True))
+                                         filename='last', 
+                                         save_top_k=1,
+                                         monitor='val molecule loss',
+                                         ))
+    logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     if len(args.devices.split(',')) > 1:
         if args.strategy_name == 'fsdp':
             strategy = strategies.DDPFullyShardedNativeStrategy()
@@ -81,17 +87,17 @@ def main(args):
             strategy = strategies.DeepSpeedStrategy(stage=3)
         else:
             strategy = MyDDPStrategy(find_unused_parameters=True, start_method='spawn')
+        trainer = Trainer(accelerator=args.accelerator, devices=args.devices, precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger)
     else:
         strategy = 'auto'
         args.devices = eval(args.devices)
-    logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
+        trainer = Trainer(accelerator=args.accelerator, devices=[args.devices], precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger)
     # trainer = Trainer.from_argparse_args(args,
     #                                      callbacks=callbacks,
     #                                      strategy=strategy,
     #                                      logger=logger,
     #                                     #  limit_train_batches=100,
     #                                      )
-    trainer = Trainer(accelerator=args.accelerator, devices=[args.devices], precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger)
     if args.mode in {'pretrain', 'ft'}:
         trainer.fit(model, datamodule=dm, ckpt_path=args.ckpt_path)
     elif args.mode == 'eval':

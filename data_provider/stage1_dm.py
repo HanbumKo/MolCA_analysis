@@ -116,7 +116,7 @@ class Stage1DM(LightningDataModule):
         parser.add_argument('--match_batch_size', type=int, default=64)
         parser.add_argument('--use_smiles', action='store_true', default=False)
         parser.add_argument('--root', type=str, default='data/PubChemDataset/PubChem-320k')
-        parser.add_argument('--text_max_len', type=int, default=256)
+        parser.add_argument('--text_max_len', type=int, default=128)
         parser.add_argument('--graph_aug', type=str, default='dnodes')
         parser.add_argument('--text_aug', action='store_true', default=False)
         parser.add_argument('--use_phy_eval', action='store_true', default=False)
