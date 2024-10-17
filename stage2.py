@@ -77,7 +77,7 @@ def main(args):
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
                                          filename='last', 
                                          save_top_k=1,
-                                         monitor='val molecule loss',
+                                         monitor='val molecule loss/dataloader_idx_0',
                                          ))
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     if len(args.devices.split(',')) > 1:
@@ -87,11 +87,11 @@ def main(args):
             strategy = strategies.DeepSpeedStrategy(stage=3)
         else:
             strategy = MyDDPStrategy(find_unused_parameters=True, start_method='spawn')
-        trainer = Trainer(accelerator=args.accelerator, devices=args.devices, precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger)
+        trainer = Trainer(accelerator=args.accelerator, devices=args.devices, precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, accumulate_grad_batches=args.accumulate_grad_batches, callbacks=callbacks, strategy=strategy, logger=logger)
     else:
         strategy = 'auto'
         args.devices = eval(args.devices)
-        trainer = Trainer(accelerator=args.accelerator, devices=[args.devices], precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, callbacks=callbacks, strategy=strategy, logger=logger)
+        trainer = Trainer(accelerator=args.accelerator, devices=[args.devices], precision=args.precision, max_epochs=args.max_epochs, check_val_every_n_epoch=args.check_val_every_n_epoch, accumulate_grad_batches=args.accumulate_grad_batches, callbacks=callbacks, strategy=strategy, logger=logger)
     # trainer = Trainer.from_argparse_args(args,
     #                                      callbacks=callbacks,
     #                                      strategy=strategy,
