@@ -8,6 +8,7 @@ import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
 from data_provider.stage2_dm import Stage2DM
 from data_provider.iupac_dm import IupacDM
+from data_provider.iupac_hard_dm import IupacHardDM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from model.blip2_stage2 import Blip2Stage2
 
@@ -62,23 +63,25 @@ def main(args):
     else:
         if args.root.lower().find('chebi') >= 0:
             dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root.lower().find('iupac') >= 0:
+            dm = IupacHardDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         else:
             dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     
     callbacks = []
     ## fixme save only used parameters
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
-    # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-    #                                      filename='{epoch:02d}', 
-    #                                      every_n_epochs=args.save_every_n_epochs, 
-    #                                      save_last=True, 
-    #                                      save_top_k=-1,
-    #                                      save_on_train_epoch_end=True))
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-                                         filename='last', 
-                                         save_top_k=1,
-                                         monitor='val molecule loss/dataloader_idx_0',
-                                         ))
+                                         filename='{epoch:02d}', 
+                                         every_n_epochs=args.save_every_n_epochs, 
+                                         save_last=True, 
+                                         save_top_k=-1,
+                                         save_on_train_epoch_end=True))
+    # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+    #                                      filename='last', 
+    #                                      save_top_k=1,
+    #                                      monitor='val molecule loss/dataloader_idx_0',
+    #                                      ))
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     if len(args.devices.split(',')) > 1:
         if args.strategy_name == 'fsdp':

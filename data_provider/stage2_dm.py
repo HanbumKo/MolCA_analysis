@@ -169,6 +169,28 @@ class Stage2DM(LightningDataModule):
             self.train_dataset = MoleculeCaptionV2(root+f'train.pt', text_max_len, self.prompt)
             self.val_dataset = MoleculeCaptionV2(root + f'valid.pt', text_max_len, self.prompt)
             self.test_dataset = MoleculeCaptionV2(root + f'test.pt', text_max_len, self.prompt)
+            
+            # # For test subset of train dataset
+            # self.train_subset_dataset = MoleculeCaptionV2(root+f'train.pt', text_max_len, self.prompt)
+            # data = self.train_subset_dataset.data
+            # slices = self.train_subset_dataset.slices
+            # data['x'] = data['x'][:slices['x'][1000], :]
+            # data['edge_index'] = data['edge_index'][:, :slices['edge_index'][1000]]
+            # data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][1000], :]
+            # data['text'] = data['text'][:slices['text'][1000]]
+            # data['smiles'] = data['smiles'][:slices['smiles'][1000]]
+            # data['cid'] = data['cid'][:slices['cid'][1000]]
+            # data['iupac'] = data['iupac'][:slices['iupac'][1000]]
+            # slices['x'] = slices['x'][:1001]
+            # slices['edge_index'] = slices['edge_index'][:1001]
+            # slices['edge_attr'] = slices['edge_attr'][:1001]
+            # slices['text'] = slices['text'][:1001]
+            # slices['smiles'] = slices['smiles'][:1001]
+            # slices['cid'] = slices['cid'][:1001]
+            # slices['iupac'] = slices['iupac'][:1001]
+            # self.train_subset_dataset.data = data
+            # self.train_subset_dataset.slices = slices
+            
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
         self.is_gal = args.opt_model.find('galactica') >= 0
@@ -222,8 +244,20 @@ class Stage2DM(LightningDataModule):
             persistent_workers=True,
             collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
+        # val_loader_2 = DataLoader(
+        #     self.val_dataset,
+        #     # self.test_subset_dataset,
+        #     batch_size=self.inference_batch_size,
+        #     shuffle=False,
+        #     num_workers=self.num_workers,
+        #     pin_memory=False,
+        #     drop_last=False,
+        #     persistent_workers=True,
+        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        # )
         test_loader = DataLoader(
             self.test_dataset,
+            # self.test_subset_dataset,
             batch_size=self.inference_batch_size,
             shuffle=False,
             num_workers=self.num_workers,
@@ -232,6 +266,17 @@ class Stage2DM(LightningDataModule):
             persistent_workers=True,
             collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
+        # train_subset_loader = DataLoader(
+        #     self.train_subset_dataset,
+        #     batch_size=self.inference_batch_size,
+        #     shuffle=False,
+        #     num_workers=self.num_workers,
+        #     pin_memory=False,
+        #     drop_last=False,
+        #     persistent_workers=True,
+        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        # )
+        # return [val_loader, test_loader, train_subset_loader, val_loader_2]
         return [val_loader, test_loader]
     
     def test_dataloader(self):

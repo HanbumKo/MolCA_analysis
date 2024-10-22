@@ -10,6 +10,7 @@ from torch_geometric.loader.dataloader import Collater
 import re
 from ogb.utils import smiles2graph
 from rdkit import RDLogger
+import pandas as pd
 RDLogger.DisableLog('rdApp.*')
 
 # we split individual characters inside special tokens like [START_DNA]
@@ -40,11 +41,15 @@ def _insert_split_marker(m: re.Match):
     return f"{start_token}{sequence}{SPLIT_MARKER}{end_token}"
 
 
-def smiles_handler(text, mol_ph, is_gal=True):
+def smiles_handler(text, mol_ph, is_gal=True, graph_only=False):
     smiles_list = []
     for match in CUSTOM_SEQ_RE.finditer(text):
         smiles = match.group(3)
         smiles_list.append(smiles)
+
+    if graph_only:
+        text = CUSTOM_SEQ_RE.sub(r'%s' % (mol_ph), text)
+        return text, smiles_list
     if is_gal:
         text = CUSTOM_SEQ_RE.sub(r'\1\3\4%s' % (mol_ph), text)
         text = escape_custom_split_sequence(text)
@@ -70,20 +75,21 @@ def escape_custom_split_sequence(text):
     return CUSTOM_SEQ_RE.sub(_insert_split_marker, text)
 
 class TrainCollater:
-    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True):
+    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True, graph_only=False):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
         self.mol_ph = mol_ph
         self.mol_token_id = mol_token_id
         self.is_gal = is_gal
+        self.graph_only = graph_only
         
     def __call__(self, batch):
         graphs, texts, smiles_prompt = zip(*batch)
         graphs = self.collater(graphs)
         
         ## deal with prompt
-        smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal)[0] for p in smiles_prompt]
+        smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal, self.graph_only)[0] for p in smiles_prompt]
         # prompt_tokens = self.tokenizer(smiles_prompt, return_tensors='pt', max_length=self.text_max_len, padding='longest', truncation=True, return_attention_mask=True)
         # prompt_lens = prompt_tokens.attention_mask.sum(dim=1)
 
@@ -116,22 +122,24 @@ class TrainCollater:
     
 
 class InferenceCollater:
-    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True):
+    def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True, graph_only=False):
         self.text_max_len = text_max_len
         self.tokenizer = tokenizer
         self.collater = Collater([], [])
         self.mol_ph = mol_ph
         self.mol_token_id = mol_token_id
         self.is_gal = is_gal
+        self.graph_only = graph_only
         
     def __call__(self, batch):
         graphs, texts, smiles_prompt = zip(*batch)
         graphs = self.collater(graphs)
-        smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal)[0] for p in smiles_prompt]
+        smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal, self.graph_only)[0] for p in smiles_prompt]
         ## deal with prompt
         self.tokenizer.paddding_side = 'left'
         smiles_prompt_tokens = self.tokenizer(smiles_prompt, 
                                        return_tensors='pt', 
+                                       add_special_tokens=True,
                                     #    max_length=self.text_max_len, 
                                        padding='longest', 
                                        truncation=False, 
@@ -150,44 +158,53 @@ def smiles2data(smiles):
     data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
     return data
 
-class CheBIDataset(Dataset):
+class IUPACHardDataset(Dataset):
     def __init__(self, path, text_max_len, prompt=None):
         self.path = path
         self.text_max_len = text_max_len
-        self.prompt = prompt
+        self.tokenizer = None
 
         if not prompt:
-            self.prompt = 'The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. '
+            self.prompt = "[START_I_SMILES]{}[END_I_SMILES]The molecule's IUPAC name is "
         else:
             self.prompt = prompt
 
-        with open(self.path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            lines = [line.strip() for line in lines][1:]
+        # with open(self.path, 'r', encoding='utf-8') as f:
+        #     lines = f.readlines()
+        #     lines = [line.strip() for line in lines][1:]
         
         self.smiles_list = []
-        self.text_list = []
-        for line in lines:
-            _, smiles, text = line.split('\t')
+        self.iupac_list = []
+
+        # for line in lines:
+        #     _, smiles, text = line.split('\t')
+        #     self.smiles_list.append(smiles)
+        #     self.text_list.append(text)
+
+        data = pd.read_csv(self.path)
+        for _, row in data.iterrows():
+            smiles = row['SMILES']
+            iupac_name = row['IUPACName']
             self.smiles_list.append(smiles)
-            self.text_list.append(text)
+            self.iupac_list.append(iupac_name)
 
     def __len__(self):
         return len(self.smiles_list)
     
     def __getitem__(self, index):
         smiles = self.smiles_list[index]
-        text = self.text_list[index] + '\n'
+        iupac = self.iupac_list[index]
+        # text = self.text_list[index] + '\n'
         graph = smiles2data(smiles)
 
         if self.prompt.find('{}') >= 0:
             smiles_prompt = self.prompt.format(smiles[:128])
         else:
             smiles_prompt = self.prompt
-        return graph, text, smiles_prompt
+        return graph, iupac + '\n', smiles_prompt
 
 
-class Stage2CheBIDM(LightningDataModule):
+class IupacHardDM(LightningDataModule):
     def __init__(
         self,
         mode: str = 'pretrain',
@@ -206,12 +223,13 @@ class Stage2CheBIDM(LightningDataModule):
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
-        self.train_dataset = CheBIDataset(root+f'/train.txt', text_max_len, self.prompt)
-        self.val_dataset = CheBIDataset(root + '/validation.txt', text_max_len, self.prompt)
-        self.test_dataset = CheBIDataset(root + '/test.txt', text_max_len, self.prompt)
+        self.graph_only = args.graph_only
+        self.train_dataset = IUPACHardDataset(root+f'/train.csv', text_max_len, self.prompt)
+        self.val_dataset = IUPACHardDataset(root + '/validation.csv', text_max_len, self.prompt)
+        self.test_dataset = IUPACHardDataset(root + '/test.csv', text_max_len, self.prompt)
 
         # # For test subset of train dataset
-        # self.train_subset_dataset = CheBIDataset(root + '/train.txt', text_max_len, self.prompt)
+        # self.train_subset_dataset = CheBIDataset(root + '/train.csv', text_max_len, self.prompt)
         # self.train_subset_dataset.smiles_list = self.train_subset_dataset.smiles_list[:1000]
         # self.train_subset_dataset.text_list = self.train_subset_dataset.text_list[:1000]
 
@@ -239,7 +257,7 @@ class Stage2CheBIDM(LightningDataModule):
             pin_memory=False,
             drop_last=True,
             persistent_workers=True,
-            collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+            collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
         return loader
 
@@ -265,7 +283,7 @@ class Stage2CheBIDM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+            collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
         # val_loader_2 = DataLoader(
         #     self.val_dataset,
@@ -275,7 +293,7 @@ class Stage2CheBIDM(LightningDataModule):
         #     pin_memory=False,
         #     drop_last=False,
         #     persistent_workers=True,
-        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         # )
         test_loader = DataLoader(
             self.test_dataset,
@@ -285,7 +303,7 @@ class Stage2CheBIDM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
         # train_subset_loader = DataLoader(
         #     self.train_subset_dataset,
@@ -295,7 +313,7 @@ class Stage2CheBIDM(LightningDataModule):
         #     pin_memory=False,
         #     drop_last=False,
         #     persistent_workers=True,
-        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         # )
         # return [val_loader, test_loader, train_subset_loader, val_loader_2]
         return [val_loader, test_loader]
@@ -309,7 +327,7 @@ class Stage2CheBIDM(LightningDataModule):
             pin_memory=False,
             drop_last=False,
             persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
         return loader
 

@@ -8,12 +8,25 @@ if not os.path.exists('analysis_results/plots'):
 
 
 column_name_to_metric_name = {
-    "bleu2": "BLEU-2",
-    "bleu4": "BLEU-4",
-    "meteor_score": "METEOR",
-    "rouge_1": "ROUGE-1",
-    "rouge_2": "ROUGE-2",
-    "rouge_l": "ROUGE-L",
+    # "bleu2": "BLEU-2",
+    # "bleu4": "BLEU-4",
+    # "meteor_score": "METEOR",
+    # "rouge_1": "ROUGE-1",
+    # "rouge_2": "ROUGE-2",
+    # "rouge_l": "ROUGE-L",
+    "bleu2_train": "BLEU-2(Train)",
+    "bleu4_train": "BLEU-4(Train)",
+    "meteor_score_train": "METEOR(Train)",
+    "rouge_1_train": "ROUGE-1(Train)",
+    "rouge_2_train": "ROUGE-2(Train)",
+    "rouge_l_train": "ROUGE-L(Train)",
+
+    "bleu2_val": "BLEU-2(Val)",
+    "bleu4_val": "BLEU-4(Val)",
+    "meteor_score_val": "METEOR(Val)",
+    "rouge_1_val": "ROUGE-1(Val)",
+    "rouge_2_val": "ROUGE-2(Val)",
+    "rouge_l_val": "ROUGE-L(Val)",
 }
 
 colors = [
@@ -27,6 +40,10 @@ colors = [
     "deepskyblue",
     "darkviolet",
     "pink",
+    "black",
+    "gray",
+    "darkorange",
+    "darkgreen",
 ]
 
 
@@ -68,39 +85,39 @@ def save_plot(metric_csv_path, title, save_name, text_sim_metrics):
 
 #######################################################################################################################################
 save_plot(
-    'all_checkpoints/ft_pubchem324k_from_origin/lightning_logs/version_0/metrics.csv',
+    'all_checkpoints/ft_pubchem324k_from_origin_test_overfit/lightning_logs/version_0/metrics.csv',
     'Learning curve of fine-tuning molecule captioning (PubChem324k)',
-    'ft_pubchem324k_from_origin_meteor',
-    ['meteor_score']
+    'ft_pubchem324k_from_origin_test_overfit_meteor',
+    ['meteor_score_val', 'meteor_score_train']
 )
 save_plot(
-    'all_checkpoints/ft_chebi20_from_origin/lightning_logs/version_0/metrics.csv',
+    'all_checkpoints/ft_chebi20_from_origin_test_overfit/lightning_logs/version_0/metrics.csv',
     'Learning curve of fine-tuning molecule captioning (ChEBI20)',
-    'ft_chebi20_from_origin_meteor',
-    ['meteor_score']
+    'ft_chebi20_from_origin_test_overfit_meteor',
+    ['meteor_score_val', 'meteor_score_train']
 )
 save_plot(
-    'all_checkpoints/ft_iupac_from_origin/lightning_logs/version_0/metrics.csv',
+    'all_checkpoints/ft_iupac_from_origin_test_overfit/lightning_logs/version_0/metrics.csv',
     'Learning curve of fine-tuning IUPAC name prediction',
-    'ft_iupac_from_origin_meteor',
-    ['meteor_score']
+    'ft_iupac_from_origin_test_overfit_meteor',
+    ['meteor_score_val', 'meteor_score_train']
 )
 
 save_plot(
-    'all_checkpoints/ft_pubchem324k_from_origin/lightning_logs/version_0/metrics.csv',
+    'all_checkpoints/ft_pubchem324k_from_origin_test_overfit/lightning_logs/version_0/metrics.csv',
     'Learning curve of fine-tuning molecule captioning (PubChem324k)',
-    'ft_pubchem324k_from_origin_full',
+    'ft_pubchem324k_from_origin_test_overfit_full',
     list(column_name_to_metric_name.keys())
 )
 save_plot(
-    'all_checkpoints/ft_chebi20_from_origin/lightning_logs/version_0/metrics.csv',
+    'all_checkpoints/ft_chebi20_from_origin_test_overfit/lightning_logs/version_0/metrics.csv',
     'Learning curve of fine-tuning molecule captioning (ChEBI20)',
-    'ft_chebi20_from_origin_full',
+    'ft_chebi20_from_origin_test_overfit_full',
     list(column_name_to_metric_name.keys())
 )
 save_plot(
-    'all_checkpoints/ft_iupac_from_origin/lightning_logs/version_0/metrics.csv',
+    'all_checkpoints/ft_iupac_from_origin_test_overfit/lightning_logs/version_0/metrics.csv',
     'Learning curve of fine-tuning IUPAC name prediction',
-    'ft_iupac_from_origin_full',
+    'ft_iupac_from_origin_test_overfit_full',
     list(column_name_to_metric_name.keys())
 )

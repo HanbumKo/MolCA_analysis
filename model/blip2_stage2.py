@@ -158,9 +158,9 @@ class Blip2Stage2(pl.LightningModule):
             self.log("rouge_l", rouge_l, sync_dist=False)
             self.log("meteor_score", meteor_score, sync_dist=False)
 
-    def save_predictions(self, predictions, targets):
+    def save_predictions(self, predictions, targets, filename='predictions.txt'):
         assert len(predictions) == len(targets)
-        with open(os.path.join(self.logger.log_dir, 'predictions.txt'), 'w', encoding='utf8') as f:
+        with open(os.path.join(self.logger.log_dir, filename), 'w', encoding='utf8') as f:
             for p, t in zip(predictions, targets):
                 line = {'prediction': p, 'target': t}
                 f.write(json.dumps(line, ensure_ascii=True) + '\n')
@@ -178,25 +178,6 @@ class Blip2Stage2(pl.LightningModule):
             min_length=self.min_len
         )
         return predictions, texts
-
-    # @torch.no_grad()
-    # def validation_step(self, batch, batch_idx, dataloader_idx=0):
-    #     if dataloader_idx == 0:
-    #         _, _, prompt_lens = batch
-    #         batch_size = prompt_lens.shape[0]
-    #         loss = self.blip2opt(batch)
-    #         ###============== Overall Loss ===================###
-    #         self.log("val molecule loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
-    #         return loss['loss']
-    #     elif dataloader_idx == 1:
-    #         reaction_tokens, _, _ = batch
-    #         batch_size = reaction_tokens.input_ids.shape[0]
-    #         loss = self.blip2opt.forward_reaction(batch)
-    #         ###============== Overall Loss ===================###
-    #         self.log("val reaction loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
-    #         return loss['loss']
-    #     else:
-    #         raise NotImplementedError
     
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx):
@@ -231,19 +212,53 @@ class Blip2Stage2(pl.LightningModule):
             )
             self.list_predictions.append(predictions)
             self.list_targets.append(texts)
+        # elif dataloader_idx == 2:
+        #     reaction_tokens, _, _ = batch
+        #     batch_size = reaction_tokens.input_ids.shape[0]
+        #     loss = self.blip2opt.forward_reaction(batch)
+        #     ###============== Overall Loss ===================###
+        #     self.log("val reaction loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
+        #     return loss['loss']
         elif dataloader_idx == 2:
-            reaction_tokens, _, _ = batch
-            batch_size = reaction_tokens.input_ids.shape[0]
-            loss = self.blip2opt.forward_reaction(batch)
-            ###============== Overall Loss ===================###
-            self.log("val reaction loss", float(loss['loss']), batch_size=batch_size, sync_dist=True)
-            return loss['loss']
+            if (self.current_epoch+1) % self.caption_eval_epoch != 0:
+                return 
+            graphs, prompt_tokens, texts = batch
+            ###============== Captioning Results ===================###
+            samples = {'graphs': graphs, 'prompt_tokens': prompt_tokens}
+            predictions = self.blip2opt.generate(
+                samples, 
+                do_sample=self.do_sample,
+                num_beams=self.num_beams,
+                max_length=self.max_len,
+                min_length=self.min_len
+            )
+            self.list_predictions_train.append(predictions)
+            self.list_targets_train.append(texts)
+        elif dataloader_idx == 3:
+            if (self.current_epoch+1) % self.caption_eval_epoch != 0:
+                return 
+            graphs, prompt_tokens, texts = batch
+            ###============== Captioning Results ===================###
+            samples = {'graphs': graphs, 'prompt_tokens': prompt_tokens}
+            predictions = self.blip2opt.generate(
+                samples, 
+                do_sample=self.do_sample,
+                num_beams=self.num_beams,
+                max_length=self.max_len,
+                min_length=self.min_len
+            )
+            self.list_predictions_val.append(predictions)
+            self.list_targets_val.append(texts)
         else:
             raise NotImplementedError
     
     def on_validation_epoch_start(self) -> None:
         self.list_predictions = []
         self.list_targets = []
+        self.list_predictions_train = []
+        self.list_targets_train = []
+        self.list_predictions_val = []
+        self.list_targets_val = []
     
     def on_validation_epoch_end(self) -> None:
     # def validation_epoch_end(self, outputs):
@@ -251,25 +266,39 @@ class Blip2Stage2(pl.LightningModule):
             return 
         # caption_outputs = outputs[1]
         # list_predictions, list_targets = zip(*caption_outputs)
-        list_predictions = self.list_predictions
-        list_targets = self.list_targets
-        predictions = [i for ii in list_predictions for i in ii]
-        targets = [i for ii in list_targets for i in ii]
+        predictions = [i for ii in self.list_predictions for i in ii]
+        targets = [i for ii in self.list_targets for i in ii]
+        predictions_train = [i for ii in self.list_predictions_train for i in ii]
+        targets_train = [i for ii in self.list_targets_train for i in ii]
+        predictions_val = [i for ii in self.list_predictions_val for i in ii]
+        targets_val = [i for ii in self.list_targets_val for i in ii]
 
         all_predictions = [None for _ in range(self.trainer.world_size)]
         all_targets = [None for _ in range(self.trainer.world_size)]
+        all_predictions_train = [None for _ in range(self.trainer.world_size)]
+        all_targets_train = [None for _ in range(self.trainer.world_size)]
+        all_predictions_val = [None for _ in range(self.trainer.world_size)]
+        all_targets_val = [None for _ in range(self.trainer.world_size)]
         try:
             dist.all_gather_object(all_predictions, predictions)
             dist.all_gather_object(all_targets, targets)
+            dist.all_gather_object(all_predictions_train, predictions_train)
+            dist.all_gather_object(all_targets_train, targets_train)
+            dist.all_gather_object(all_predictions_val, predictions_val)
+            dist.all_gather_object(all_targets_val, targets_val)
         # except RuntimeError:
         except:
             all_predictions = [predictions]
             all_targets = [targets]
+            all_predictions_train = [predictions_train]
+            all_targets_train = [targets_train]
+            all_predictions_val = [predictions_val]
+            all_targets_val = [targets_val]
 
         if self.global_rank == 0:
             all_predictions = [i for ii in all_predictions for i in ii]
             all_targets = [i for ii in all_targets for i in ii]
-            self.save_predictions(all_predictions, all_targets)
+            self.save_predictions(all_predictions, all_targets, filename=f'predictions_epoch{self.current_epoch}_test.txt')
             ## fixme: I am not sure if the max length is the same as previous experiments
             bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
                 caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
@@ -279,7 +308,34 @@ class Blip2Stage2(pl.LightningModule):
             self.log("rouge_2", rouge_2, sync_dist=False)
             self.log("rouge_l", rouge_l, sync_dist=False)
             self.log("meteor_score", meteor_score, sync_dist=False)
-        
+
+            all_predictions_train = [i for ii in all_predictions_train for i in ii]
+            all_targets_train = [i for ii in all_targets_train for i in ii]
+            if len(all_predictions_train) > 0:
+                self.save_predictions(all_predictions_train, all_targets_train, filename=f'predictions_epoch{self.current_epoch}_train.txt')
+                ## fixme: I am not sure if the max length is the same as previous experiments
+                bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                    caption_evaluate(all_predictions_train, all_targets_train, self.tokenizer, self.max_len * 2) 
+                self.log("bleu2_train", bleu2, sync_dist=False)
+                self.log("bleu4_train", bleu4, sync_dist=False)
+                self.log("rouge_1_train", rouge_1, sync_dist=False)
+                self.log("rouge_2_train", rouge_2, sync_dist=False)
+                self.log("rouge_l_train", rouge_l, sync_dist=False)
+                self.log("meteor_score_train", meteor_score, sync_dist=False)
+
+            all_predictions_val = [i for ii in all_predictions_val for i in ii]
+            all_targets_val = [i for ii in all_targets_val for i in ii]
+            if len(all_predictions_val) > 0:
+                self.save_predictions(all_predictions_val, all_targets_val, filename=f'predictions_epoch{self.current_epoch}_validation.txt')
+                ## fixme: I am not sure if the max length is the same as previous experiments
+                bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                    caption_evaluate(all_predictions_val, all_targets_val, self.tokenizer, self.max_len * 2) 
+                self.log("bleu2_val", bleu2, sync_dist=False)
+                self.log("bleu4_val", bleu4, sync_dist=False)
+                self.log("rouge_1_val", rouge_1, sync_dist=False)
+                self.log("rouge_2_val", rouge_2, sync_dist=False)
+                self.log("rouge_l_val", rouge_l, sync_dist=False)
+                self.log("meteor_score_val", meteor_score, sync_dist=False)
 
     def training_step(self, batch, batch_idx):
         if self.scheduler:

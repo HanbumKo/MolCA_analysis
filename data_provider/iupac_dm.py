@@ -55,7 +55,6 @@ def smiles_handler(text, mol_ph, is_gal=True, graph_only=False):
         return text, smiles_list
 
 
-
 def escape_custom_split_sequence(text):
     """
     Applies custom splitting to the text for GALILEO's tokenization
@@ -109,7 +108,7 @@ class TrainCollater:
                                      return_tensors='pt',
                                      return_attention_mask=True)
         return graphs, smiles_prompt_tokens, text_tokens
-    
+
 
 class InferenceCollater:
     def __init__(self, tokenizer, text_max_len, mol_ph, mol_token_id, is_gal=True, graph_only=False):
@@ -139,7 +138,7 @@ class InferenceCollater:
         is_mol_token = smiles_prompt_tokens.input_ids == self.mol_token_id
         smiles_prompt_tokens['is_mol_token'] = is_mol_token
         return graphs, smiles_prompt_tokens, texts
-    
+
 
 class IupacDM(LightningDataModule):
     def __init__(
@@ -164,6 +163,28 @@ class IupacDM(LightningDataModule):
         self.train_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
         self.val_dataset = IUPACDataset(root+'valid.pt', text_max_len, self.prompt)
         self.test_dataset = IUPACDataset(root+'test.pt', text_max_len, self.prompt)
+
+        # # For test subset of train dataset
+        # self.train_subset_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
+        # data = self.train_subset_dataset.data
+        # slices = self.train_subset_dataset.slices
+        # data['x'] = data['x'][:slices['x'][1000], :]
+        # data['edge_index'] = data['edge_index'][:, :slices['edge_index'][1000]]
+        # data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][1000], :]
+        # data['text'] = data['text'][:slices['text'][1000]]
+        # data['smiles'] = data['smiles'][:slices['smiles'][1000]]
+        # data['cid'] = data['cid'][:slices['cid'][1000]]
+        # data['iupac'] = data['iupac'][:slices['iupac'][1000]]
+        # slices['x'] = slices['x'][:1001]
+        # slices['edge_index'] = slices['edge_index'][:1001]
+        # slices['edge_attr'] = slices['edge_attr'][:1001]
+        # slices['text'] = slices['text'][:1001]
+        # slices['smiles'] = slices['smiles'][:1001]
+        # slices['cid'] = slices['cid'][:1001]
+        # slices['iupac'] = slices['iupac'][:1001]
+        # self.train_subset_dataset.data = data
+        # self.train_subset_dataset.slices = slices
+
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
         self.is_gal = args.opt_model.find('galactica') >= 0
@@ -202,6 +223,16 @@ class IupacDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
+        # val_loader_2 = DataLoader(
+        #     self.val_dataset,
+        #     batch_size=self.inference_batch_size,
+        #     shuffle=False,
+        #     num_workers=self.num_workers,
+        #     pin_memory=False,
+        #     drop_last=False,
+        #     persistent_workers=True,
+        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        # )
         test_loader = DataLoader(
             self.test_dataset,
             batch_size=self.inference_batch_size,
@@ -212,6 +243,17 @@ class IupacDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
+        # train_subset_loader = DataLoader(
+        #     self.test_dataset,
+        #     batch_size=self.inference_batch_size,
+        #     shuffle=False,
+        #     num_workers=self.num_workers,
+        #     pin_memory=False,
+        #     drop_last=False,
+        #     persistent_workers=True,
+        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        # )
+        # return [val_loader, test_loader, train_subset_loader, val_loader_2]
         return [val_loader, test_loader]
     
     def test_dataloader(self):
