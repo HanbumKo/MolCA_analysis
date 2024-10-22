@@ -63,8 +63,6 @@ def main(args):
     else:
         if args.root.lower().find('chebi') >= 0:
             dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
-        elif args.root.lower().find('iupac') >= 0:
-            dm = IupacHardDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         else:
             dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     

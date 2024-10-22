@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 import torch
+import argparse
 from pytorch_lightning import LightningDataModule
 import torch_geometric
 # from torch_geometric.loader import DataLoader
@@ -17,6 +18,15 @@ CUSTOM_SEQ_RE = re.compile(r"(\[START_(DNA|SMILES|I_SMILES|AMINO)])(.*?)(\[END_\
 # that they do not occur in the corpus. The digits are escaped so that the token does not appear
 # literally in the source code in case we ever include it in the training data.
 SPLIT_MARKER = f"SPL{1}T-TH{1}S-Pl3A5E"
+
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 
 def _insert_split_marker(m: re.Match):
     """
@@ -303,5 +313,6 @@ class Stage2DM(LightningDataModule):
         parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         parser.add_argument('--filtered_cid_path', type=str, default=None)
         parser.add_argument('--graph_only', action='store_true', default=False)
+        parser.add_argument('--use_hards', nargs='+', type=str2bool, help='use hard dataset, [train - True/False, val - True/False, test - True/False]. Example: --use_hards False, False, False')
         return parent_parser
     
