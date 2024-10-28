@@ -48,16 +48,16 @@ def get_module_state_dict(state_dict, module_name):
 # peft_config = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1)
 class Blip2Stage2(pl.LightningModule):
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        # checkpoint.pop('optimizer_states')
-        to_be_removed = []
-        for key, value in checkpoint['state_dict'].items():
-            try:
-                if not self.get_parameter(key).requires_grad:
-                    to_be_removed.append(key)
-            except AttributeError:
-                to_be_removed.append(key)
-        for key in to_be_removed:
-            checkpoint['state_dict'].pop(key)
+        checkpoint.pop('optimizer_states')
+        # to_be_removed = []
+        # for key, value in checkpoint['state_dict'].items():
+        #     try:
+        #         if not self.get_parameter(key).requires_grad:
+        #             to_be_removed.append(key)
+        #     except AttributeError:
+        #         to_be_removed.append(key)
+        # for key in to_be_removed:
+        #     checkpoint['state_dict'].pop(key)
     
     def __init__(self, args):
         super().__init__()
@@ -423,6 +423,10 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--att_reg', action='store_true', default=False, help='use attention regularization or not')
         parser.add_argument('--att_reg_method', type=str, default='cos', help="type of attention regularization ['cos', 'kl', 'l2']", choices=['cos', 'kl', 'l2'])
         parser.add_argument('--att_reg_lambda', type=float, default=0.1, help='weight of attention regularization')
+
+        # Query token test
+        parser.add_argument('--shuffle_query', action='store_true', default=False)
+        parser.add_argument('--zero_query', action='store_true', default=False)
         return parent_parser
 
 

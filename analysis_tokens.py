@@ -1,6 +1,8 @@
 import itertools
+import json
 import torch
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from transformers import AutoTokenizer
 from collections import Counter
@@ -25,6 +27,11 @@ def plot_histogram(ngrams_freq, task, ns):
             ngram_freq = ngrams_freq[split][n]
             tokens = list(ngram_freq.keys())
             frequencies = list(ngram_freq.values())
+            # Save ngram_freq to a file, f"analysis_results/plots/{n}-gram_distribution_{task}_{split}.json"
+            with open(f"analysis_results/plots/{n}-gram_distribution_{task}_{split}.json", 'w') as f:
+                json.dump(ngram_freq, f, indent=4)
+            sum_freq = sum(frequencies)
+            frequencies = [f/sum_freq for f in frequencies]
             # plt.bar(tokens, frequencies, alpha=0.5, label=split)
             plt.hist(tokens, weights=frequencies, alpha=0.5, label=split, bins=300)
         plt.xlabel(f"{n}-grams")
@@ -82,6 +89,9 @@ test_descriptions = test_dataset.text
 train_iupac = train_dataset.iupac
 valid_iupac = valid_dataset.iupac
 test_iupac = test_dataset.iupac
+train_large_iupac = pd.read_csv("data/PubChem324kV2/train_iupac_hard.csv")['IUPACName'].tolist()
+test_hard_iupac = pd.read_csv("data/PubChem324kV2/test_iupac_hard.csv")['IUPACName'].tolist()
+val_hard_iupac = pd.read_csv("data/PubChem324kV2/validation_iupac_hard.csv")['IUPACName'].tolist()
 
 descriptions = {
     "train": train_descriptions,
@@ -91,7 +101,10 @@ descriptions = {
 iupacs = {
     "train": train_iupac,
     "val": valid_iupac,
-    "test": test_iupac
+    "test": test_iupac,
+    "train_large": train_large_iupac,
+    "test_hard": test_hard_iupac,
+    "val_hard": val_hard_iupac
 }
 
 # Load the tokenizer

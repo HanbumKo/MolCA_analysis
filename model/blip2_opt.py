@@ -257,6 +257,11 @@ class Blip2OPT(Blip2Base):
             return_dict=True,
             output_attentions=True,
         )
+        if self.args.shuffle_query: # Shuffle the query tokens between queries
+            # query_output.last_hidden_state: (batch_size, num_query_token, D)
+            query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+        if self.args.zero_query:
+            query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
         mol_tokens = self.opt_proj(query_output.last_hidden_state)
         
         empty_targets = torch.ones(prompt_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
@@ -468,6 +473,11 @@ class Blip2OPT(Blip2Base):
             encoder_attention_mask=graph_masks,
             return_dict=True,
         )
+        if self.args.shuffle_query: # Shuffle the query tokens between queries
+            # query_output.last_hidden_state: (batch_size, num_query_token, D)
+            query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+        if self.args.zero_query:
+            query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
         mol_tokens = self.opt_proj(query_output.last_hidden_state)
         
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
