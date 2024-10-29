@@ -313,6 +313,6 @@ class Stage2DM(LightningDataModule):
         parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         parser.add_argument('--filtered_cid_path', type=str, default=None)
         parser.add_argument('--graph_only', action='store_true', default=False)
-        parser.add_argument('--use_hards', nargs='+', type=str2bool, help='use hard dataset, [train - True/False, val - True/False, test - True/False]. Example: --use_hards False, False, False')
+        parser.add_argument('--use_hards', nargs='+', default="False False False", type=str2bool, help='use hard dataset, [train - True/False, val - True/False, test - True/False]. Example: --use_hards False False False')
         return parent_parser
     

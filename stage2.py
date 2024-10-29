@@ -70,10 +70,12 @@ def main(args):
     ## fixme save only used parameters
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-                                         filename='{epoch:02d}', 
+                                         filename='best',
+                                        #  filename='best{epoch:02d}',
                                          every_n_epochs=args.save_every_n_epochs, 
                                          save_last=True, 
-                                         save_top_k=-1,
+                                         save_top_k=1,
+                                         monitor='val molecule loss/dataloader_idx_0',
                                          save_on_train_epoch_end=True))
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
     #                                      filename='last', 

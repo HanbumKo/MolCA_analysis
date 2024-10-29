@@ -46,11 +46,19 @@ def main(args):
     #                                      filename='{epoch:02d}', 
     #                                      every_n_epochs=args.save_every_n_epochs, 
     #                                      save_top_k=-1))
+    # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+    #                                      filename='last', 
+    #                                      save_top_k=1,
+    #                                      monitor='val_loss',
+    #                                      ))
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-                                         filename='last', 
+                                         filename='best',
+                                        #  filename='best{epoch:02d}',
+                                         every_n_epochs=args.save_every_n_epochs, 
+                                         save_last=True, 
                                          save_top_k=1,
-                                         monitor='val_loss',
-                                         ))
+                                         monitor='val molecule loss/dataloader_idx_0',
+                                         save_on_train_epoch_end=True))
     
     find_unused_parameters = (not args.gtm) or (not args.lm)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
