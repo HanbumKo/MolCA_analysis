@@ -167,6 +167,14 @@ class Blip2OPT(Blip2Base):
                 self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer)) ## this will cause bug when full fine-tuning the opt model
 
+        if args.stage2_path:
+            ckpt = torch.load(args.stage2_path, map_location='cpu')
+            new_state_dict = {}
+            for key, val in ckpt['state_dict'].items():
+                key = key.replace('blip2opt.', '')
+                new_state_dict[key] = val
+            self.load_state_dict(new_state_dict, strict=False)
+
         self.llm_tune = llm_tune
         if llm_tune == 'lora':
             if peft_dir:
@@ -195,6 +203,10 @@ class Blip2OPT(Blip2Base):
         self.opt_proj = nn.Linear(
             self.Qformer.config.hidden_size, self.opt_model.config.hidden_size
         )
+        if args.stage2_path:
+            self.opt_proj.weight.data = new_state_dict['opt_proj.weight']
+            self.opt_proj.bias.data = new_state_dict['opt_proj.bias']
+            print(f"loaded stage2 model from {args.stage2_path}")
         
         ## fixme: no prompt yet
         self.prompt = prompt
@@ -257,10 +269,18 @@ class Blip2OPT(Blip2Base):
             return_dict=True,
             output_attentions=True,
         )
+        if self.args.query_index != -1:
+            num_query = query_output.last_hidden_state.size(1)
+            assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+            new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+            new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+            query_output.last_hidden_state = new_hidden_state
         if self.args.shuffle_query: # Shuffle the query tokens between queries
             # query_output.last_hidden_state: (batch_size, num_query_token, D)
+            print("shuffle query")
             query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
         if self.args.zero_query:
+            print("zero query")
             query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
         mol_tokens = self.opt_proj(query_output.last_hidden_state)
         
@@ -269,6 +289,8 @@ class Blip2OPT(Blip2Base):
             text_tokens.input_ids == self.opt_tokenizer.pad_token_id, -100
         )
         targets = torch.cat([empty_targets, targets], dim=1)
+
+        # (prompt_tokens.input_ids == 22).nonzero(as_tuple=True)[1]
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
         prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
@@ -473,10 +495,18 @@ class Blip2OPT(Blip2Base):
             encoder_attention_mask=graph_masks,
             return_dict=True,
         )
+        if self.args.query_index != -1:
+            num_query = query_output.last_hidden_state.size(1)
+            assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+            new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+            new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+            query_output.last_hidden_state = new_hidden_state
         if self.args.shuffle_query: # Shuffle the query tokens between queries
             # query_output.last_hidden_state: (batch_size, num_query_token, D)
+            print("shuffle query")
             query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
         if self.args.zero_query:
+            print("zero query")
             query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
         mol_tokens = self.opt_proj(query_output.last_hidden_state)
         

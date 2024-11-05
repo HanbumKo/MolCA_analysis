@@ -61,6 +61,38 @@ def caption_evaluate(predictions, targets, tokenizer, text_trunc_length):
     return bleu2, bleu4, rouge_1, rouge_2, rouge_l, _meteor_score
 
 
+def regression_evaluate(predictions, targets):
+    validity = []
+    predictions_processed = []
+    targets_processed = []
+    for p, t in zip(predictions, targets):
+        # Convert to float
+        try:
+            p = float(p)
+        except:
+            validity.append(False)
+            continue
+        try:
+            t = float(t.replace("SPL1T-TH1S-Pl3A5E", "").replace("\n", ""))
+        except:
+            validity.append(False)
+            continue
+        predictions_processed.append(p)
+        targets_processed.append(t)
+        validity.append(True)
+    validity = np.array(validity)
+    validity = np.mean(validity)
+    if validity == 0:
+        return None, None, None, None
+    predictions = np.array(predictions_processed)
+    targets = np.array(targets_processed)
+    mae = np.mean(np.abs(predictions - targets))
+    mse = np.mean((predictions - targets) ** 2)
+    rmse = np.sqrt(mse)
+    # mape = np.mean(np.abs(predictions - targets) / targets)
+    return mae, mse, rmse, validity
+
+
 class AttrDict(dict):
     def __init__(self, *args, **kwargs):
         super(AttrDict, self).__init__(*args, **kwargs)

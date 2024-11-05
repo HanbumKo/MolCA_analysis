@@ -309,10 +309,10 @@ class Stage2DM(LightningDataModule):
         parser.add_argument('--inference_batch_size', type=int, default=4)
         parser.add_argument('--use_smiles', action='store_true', default=False)
         parser.add_argument('--root', type=str, default='data/PubChemDataset_v4')
-        parser.add_argument('--text_max_len', type=int, default=256)
+        parser.add_argument('--text_max_len', type=int, default=128)
         parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         parser.add_argument('--filtered_cid_path', type=str, default=None)
         parser.add_argument('--graph_only', action='store_true', default=False)
-        parser.add_argument('--use_hards', nargs='+', default="False False False", type=str2bool, help='use hard dataset, [train - True/False, val - True/False, test - True/False]. Example: --use_hards False False False')
+        # parser.add_argument('--use_hards', nargs='+', default="False False False", type=str2bool, help='use hard dataset, [train - True/False, val - True/False, test - True/False]. Example: --use_hards False False False')
         return parent_parser
     

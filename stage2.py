@@ -10,6 +10,7 @@ from data_provider.stage2_dm import Stage2DM
 from data_provider.iupac_dm import IupacDM
 from data_provider.iupac_hard_dm import IupacHardDM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
+from data_provider.property_prediction_dm import PropertyPredictionDM
 from model.blip2_stage2 import Blip2Stage2
 
 # torch.set_default_dtype(torch.float16)
@@ -37,11 +38,11 @@ def main(args):
     if args.init_checkpoint:
         model = Blip2Stage2.load_from_checkpoint(args.init_checkpoint, strict=False, args=args, map_location="cuda")
         print(f"loaded init checkpoint from {args.init_checkpoint}")
-    elif args.stage2_path:
-        model = Blip2Stage2(args)
-        ckpt = torch.load(args.stage2_path, map_location='cpu')
-        model.load_state_dict(ckpt['state_dict'], strict=False)
-        print(f"loaded stage2 model from {args.stage2_path}")
+    # elif args.stage2_path:
+    #     model = Blip2Stage2(args)
+    #     ckpt = torch.load(args.stage2_path, map_location='cpu')
+    #     model.load_state_dict(ckpt['state_dict'], strict=False)
+    #     print(f"loaded stage2 model from {args.stage2_path}")
     elif args.stage1_path:
         model = Blip2Stage2(args)
         model.load_from_stage1_checkpoint(args.stage1_path)
@@ -63,6 +64,8 @@ def main(args):
     else:
         if args.root.lower().find('chebi') >= 0:
             dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root.lower().find('property_prediction') >= 0:
+            dm = PropertyPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         else:
             dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     
@@ -85,7 +88,7 @@ def main(args):
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')
     if len(args.devices.split(',')) > 1:
         if args.strategy_name == 'fsdp':
-            strategy = strategies.DDPFullyShardedNativeStrategy()
+            strategy = strategies.FSDPStrategy()
         elif args.strategy_name == 'deepspeed':
             strategy = strategies.DeepSpeedStrategy(stage=3)
         else:

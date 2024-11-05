@@ -57,7 +57,7 @@ def main(args):
                                          every_n_epochs=args.save_every_n_epochs, 
                                          save_last=True, 
                                          save_top_k=1,
-                                         monitor='val molecule loss/dataloader_idx_0',
+                                         monitor='val_loss',
                                          save_on_train_epoch_end=True))
     
     find_unused_parameters = (not args.gtm) or (not args.lm)

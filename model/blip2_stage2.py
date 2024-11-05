@@ -10,7 +10,7 @@ from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepL
 import json
 import torch.distributed as dist
 from peft import LoraConfig, TaskType
-from model.help_funcs import caption_evaluate, AttrDict
+from model.help_funcs import caption_evaluate, regression_evaluate, AttrDict
 from transformers import Adafactor
 
 
@@ -74,6 +74,7 @@ class Blip2Stage2(pl.LightningModule):
         self.min_len = args.min_len
         self.reaction_weight = args.reaction_weight
         self.llm_tune = args.llm_tune
+        self.is_regression = args.root.lower().find('property_prediction') >= 0
         if args.opt_model.find('galactica') >= 0:
             self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
@@ -162,6 +163,7 @@ class Blip2Stage2(pl.LightningModule):
         assert len(predictions) == len(targets)
         with open(os.path.join(self.logger.log_dir, filename), 'w', encoding='utf8') as f:
             for p, t in zip(predictions, targets):
+                t = t.replace("SPL1T-TH1S-Pl3A5E", "")
                 line = {'prediction': p, 'target': t}
                 f.write(json.dumps(line, ensure_ascii=True) + '\n')
 
@@ -298,44 +300,66 @@ class Blip2Stage2(pl.LightningModule):
         if self.global_rank == 0:
             all_predictions = [i for ii in all_predictions for i in ii]
             all_targets = [i for ii in all_targets for i in ii]
-            self.save_predictions(all_predictions, all_targets, filename=f'predictions_epoch{self.current_epoch}_test.txt')
-            ## fixme: I am not sure if the max length is the same as previous experiments
-            bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
-            self.log("bleu2", bleu2, sync_dist=False)
-            self.log("bleu4", bleu4, sync_dist=False)
-            self.log("rouge_1", rouge_1, sync_dist=False)
-            self.log("rouge_2", rouge_2, sync_dist=False)
-            self.log("rouge_l", rouge_l, sync_dist=False)
-            self.log("meteor_score", meteor_score, sync_dist=False)
+            if len(all_predictions) > 0:
+                self.save_predictions(all_predictions, all_targets, filename=f'predictions_epoch{self.current_epoch}_test.txt')
+                if self.is_regression:
+                    mae, mse, rmse, validity = regression_evaluate(all_predictions, all_targets)
+                    self.log("mae", mae, sync_dist=False)
+                    self.log("mse", mse, sync_dist=False)
+                    self.log("rmse", rmse, sync_dist=False)
+                    self.log("validity", validity, sync_dist=False)
+                else: # Text generation problem
+                    ## fixme: I am not sure if the max length is the same as previous experiments
+                    bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                        caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
+                    self.log("bleu2", bleu2, sync_dist=False)
+                    self.log("bleu4", bleu4, sync_dist=False)
+                    self.log("rouge_1", rouge_1, sync_dist=False)
+                    self.log("rouge_2", rouge_2, sync_dist=False)
+                    self.log("rouge_l", rouge_l, sync_dist=False)
+                    self.log("meteor_score", meteor_score, sync_dist=False)
 
             all_predictions_train = [i for ii in all_predictions_train for i in ii]
             all_targets_train = [i for ii in all_targets_train for i in ii]
             if len(all_predictions_train) > 0:
                 self.save_predictions(all_predictions_train, all_targets_train, filename=f'predictions_epoch{self.current_epoch}_train.txt')
-                ## fixme: I am not sure if the max length is the same as previous experiments
-                bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                    caption_evaluate(all_predictions_train, all_targets_train, self.tokenizer, self.max_len * 2) 
-                self.log("bleu2_train", bleu2, sync_dist=False)
-                self.log("bleu4_train", bleu4, sync_dist=False)
-                self.log("rouge_1_train", rouge_1, sync_dist=False)
-                self.log("rouge_2_train", rouge_2, sync_dist=False)
-                self.log("rouge_l_train", rouge_l, sync_dist=False)
-                self.log("meteor_score_train", meteor_score, sync_dist=False)
+                if self.is_regression:
+                    mae, mse, rmse, validity = regression_evaluate(all_predictions_train, all_targets_train)
+                    self.log("mae_train", mae, sync_dist=False)
+                    self.log("mse_train", mse, sync_dist=False)
+                    self.log("rmse_train", rmse, sync_dist=False)
+                    self.log("validity_train", validity, sync_dist=False)
+                else: # Text generation problem
+                    ## fixme: I am not sure if the max length is the same as previous experiments
+                    bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                        caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
+                    self.log("bleu2_train", bleu2, sync_dist=False)
+                    self.log("bleu4_train", bleu4, sync_dist=False)
+                    self.log("rouge_1_train", rouge_1, sync_dist=False)
+                    self.log("rouge_2_train", rouge_2, sync_dist=False)
+                    self.log("rouge_l_train", rouge_l, sync_dist=False)
+                    self.log("meteor_score_train", meteor_score, sync_dist=False)
 
             all_predictions_val = [i for ii in all_predictions_val for i in ii]
             all_targets_val = [i for ii in all_targets_val for i in ii]
             if len(all_predictions_val) > 0:
                 self.save_predictions(all_predictions_val, all_targets_val, filename=f'predictions_epoch{self.current_epoch}_validation.txt')
-                ## fixme: I am not sure if the max length is the same as previous experiments
-                bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                    caption_evaluate(all_predictions_val, all_targets_val, self.tokenizer, self.max_len * 2) 
-                self.log("bleu2_val", bleu2, sync_dist=False)
-                self.log("bleu4_val", bleu4, sync_dist=False)
-                self.log("rouge_1_val", rouge_1, sync_dist=False)
-                self.log("rouge_2_val", rouge_2, sync_dist=False)
-                self.log("rouge_l_val", rouge_l, sync_dist=False)
-                self.log("meteor_score_val", meteor_score, sync_dist=False)
+                if self.is_regression:
+                    mae, mse, rmse, validity = regression_evaluate(all_predictions_val, all_targets_val)
+                    self.log("mae_val", mae, sync_dist=False)
+                    self.log("mse_val", mse, sync_dist=False)
+                    self.log("rmse_val", rmse, sync_dist=False)
+                    self.log("validity_val", validity, sync_dist=False)
+                else: # Text generation problem
+                    ## fixme: I am not sure if the max length is the same as previous experiments
+                    bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                        caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
+                    self.log("bleu2_val", bleu2, sync_dist=False)
+                    self.log("bleu4_val", bleu4, sync_dist=False)
+                    self.log("rouge_1_val", rouge_1, sync_dist=False)
+                    self.log("rouge_2_val", rouge_2, sync_dist=False)
+                    self.log("rouge_l_val", rouge_l, sync_dist=False)
+                    self.log("meteor_score_val", meteor_score, sync_dist=False)
 
     def training_step(self, batch, batch_idx):
         if self.scheduler:
@@ -427,6 +451,7 @@ class Blip2Stage2(pl.LightningModule):
         # Query token test
         parser.add_argument('--shuffle_query', action='store_true', default=False)
         parser.add_argument('--zero_query', action='store_true', default=False)
+        parser.add_argument('--query_index', type=int, default=-1)
         return parent_parser
 
 

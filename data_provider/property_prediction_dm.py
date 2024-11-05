@@ -7,7 +7,7 @@ import torch_geometric
 from torch_geometric.data import Data
 from torch.utils.data import DataLoader, Dataset
 from torch_geometric.loader.dataloader import Collater
-from data_provider.molecule_iupac_dataset import IUPACDataset
+from data_provider.property_prediction_dataset import PropertyPrediction
 import re
 from ogb.utils import smiles2graph
 from rdkit import RDLogger
@@ -154,43 +154,7 @@ class InferenceCollater:
         return graphs, smiles_prompt_tokens, texts
 
 
-class IUPACHardDataset(Dataset):
-    def __init__(self, path, text_max_len, prompt=None):
-        self.path = path
-        self.text_max_len = text_max_len
-        self.tokenizer = None
-
-        if not prompt:
-            self.prompt = "[START_I_SMILES]{}[END_I_SMILES]The molecule's IUPAC name is "
-        else:
-            self.prompt = prompt
-
-        self.smiles_list = []
-        self.iupac_list = []
-
-        data = pd.read_csv(self.path)
-        for _, row in data.iterrows():
-            smiles = row['SMILES']
-            iupac_name = row['IUPACName']
-            self.smiles_list.append(smiles)
-            self.iupac_list.append(iupac_name)
-
-    def __len__(self):
-        return len(self.smiles_list)
-    
-    def __getitem__(self, index):
-        smiles = self.smiles_list[index]
-        iupac = self.iupac_list[index]
-        graph = smiles2data(smiles)
-
-        if self.prompt.find('{}') >= 0:
-            smiles_prompt = self.prompt.format(smiles[:128])
-        else:
-            smiles_prompt = self.prompt
-        return graph, iupac + '\n', smiles_prompt
-
-
-class IupacDM(LightningDataModule):
+class PropertyPredictionDM(LightningDataModule):
     def __init__(
         self,
         mode: str = 'pretrain',
@@ -211,43 +175,9 @@ class IupacDM(LightningDataModule):
         self.prompt = args.prompt
         self.graph_only = args.graph_only
         
-        self.train_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
-        self.val_dataset = IUPACDataset(root+'valid.pt', text_max_len, self.prompt)
-        self.test_dataset = IUPACDataset(root+'test.pt', text_max_len, self.prompt)
-
-        # if args.use_hards[0]:
-        #     self.train_dataset = IUPACHardDataset(root+f'train_iupac_hard.csv', text_max_len, self.prompt)
-        # else:
-        #     self.train_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
-        # if args.use_hards[1]:
-        #     self.val_dataset = IUPACHardDataset(root+f'validation_iupac_hard.csv', text_max_len, self.prompt)
-        # else:
-        #     self.val_dataset = IUPACDataset(root+'valid.pt', text_max_len, self.prompt)
-        # if args.use_hards[2]:
-        #     self.test_dataset = IUPACHardDataset(root+f'test_iupac_hard.csv', text_max_len, self.prompt)
-        # else:
-        #     self.test_dataset = IUPACDataset(root+'test.pt', text_max_len, self.prompt)
-
-        # # For test subset of train dataset
-        # self.train_subset_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
-        # data = self.train_subset_dataset.data
-        # slices = self.train_subset_dataset.slices
-        # data['x'] = data['x'][:slices['x'][1000], :]
-        # data['edge_index'] = data['edge_index'][:, :slices['edge_index'][1000]]
-        # data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][1000], :]
-        # data['text'] = data['text'][:slices['text'][1000]]
-        # data['smiles'] = data['smiles'][:slices['smiles'][1000]]
-        # data['cid'] = data['cid'][:slices['cid'][1000]]
-        # data['iupac'] = data['iupac'][:slices['iupac'][1000]]
-        # slices['x'] = slices['x'][:1001]
-        # slices['edge_index'] = slices['edge_index'][:1001]
-        # slices['edge_attr'] = slices['edge_attr'][:1001]
-        # slices['text'] = slices['text'][:1001]
-        # slices['smiles'] = slices['smiles'][:1001]
-        # slices['cid'] = slices['cid'][:1001]
-        # slices['iupac'] = slices['iupac'][:1001]
-        # self.train_subset_dataset.data = data
-        # self.train_subset_dataset.slices = slices
+        self.train_dataset = PropertyPrediction(root+'train.pt', text_max_len, self.prompt)
+        self.val_dataset = PropertyPrediction(root+'val.pt', text_max_len, self.prompt)
+        self.test_dataset = PropertyPrediction(root+'test.pt', text_max_len, self.prompt)
 
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
