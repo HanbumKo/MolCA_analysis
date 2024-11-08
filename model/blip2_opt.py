@@ -256,33 +256,37 @@ class Blip2OPT(Blip2Base):
     
     def forward(self, batch):
         graphs, prompt_tokens, text_tokens = batch
-        graph_embeds, graph_masks = self.graph_encoder(graphs)
-        if not self.tune_gnn:
-            graph_embeds = graph_embeds.detach()
-        graph_embeds = self.ln_graph(graph_embeds, graph_masks)
-        device = graph_embeds.device
-        query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-        query_output = self.Qformer.bert(
-            query_embeds=query_tokens,
-            encoder_hidden_states=graph_embeds,
-            encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
-            return_dict=True,
-            output_attentions=True,
-        )
-        if self.args.query_index != -1:
-            num_query = query_output.last_hidden_state.size(1)
-            assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
-            new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-            new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
-            query_output.last_hidden_state = new_hidden_state
-        if self.args.shuffle_query: # Shuffle the query tokens between queries
-            # query_output.last_hidden_state: (batch_size, num_query_token, D)
-            print("shuffle query")
-            query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
-        if self.args.zero_query:
-            print("zero query")
-            query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-        mol_tokens = self.opt_proj(query_output.last_hidden_state)
+        if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+            mol_tokens_list = self.forward_graph_list(graphs)
+            device = mol_tokens_list[0].device
+        else:
+            graph_embeds, graph_masks = self.graph_encoder(graphs)
+            if not self.tune_gnn:
+                graph_embeds = graph_embeds.detach()
+            graph_embeds = self.ln_graph(graph_embeds, graph_masks)
+            device = graph_embeds.device
+            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+            query_output = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=graph_embeds,
+                encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+                return_dict=True,
+                output_attentions=True,
+            )
+            if self.args.query_index != -1:
+                num_query = query_output.last_hidden_state.size(1)
+                assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+                new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+                query_output.last_hidden_state = new_hidden_state
+            if self.args.shuffle_query: # Shuffle the query tokens between queries
+                # query_output.last_hidden_state: (batch_size, num_query_token, D)
+                print("shuffle query")
+                query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+            if self.args.zero_query:
+                print("zero query")
+                query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+            mol_tokens = self.opt_proj(query_output.last_hidden_state)
         
         empty_targets = torch.ones(prompt_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
         targets = text_tokens.input_ids.masked_fill(
@@ -293,7 +297,11 @@ class Blip2OPT(Blip2Base):
         # (prompt_tokens.input_ids == 22).nonzero(as_tuple=True)[1]
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-        prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
+        if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+            for i, mol_tokens in enumerate(mol_tokens_list):
+                prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
+        else:
+            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
         inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
         attention_mask = torch.cat([prompt_tokens.attention_mask, text_tokens.attention_mask], dim=1)
@@ -310,29 +318,62 @@ class Blip2OPT(Blip2Base):
         target_start_idx = (targets != -100).nonzero(as_tuple=True)[1].min().item() # Same for all samples in the batch
         
         
-        ###============== Attention score regularization ===================###
-        att_cos = 0
-        att_kl = 0
-        att_l2 = 0
-        cross_attentions = query_output['cross_attentions'] # Cross attention and past key values are mixed in this tuple
-        cross_attentions = [cross_attentions[i] for i in range(0, len(query_output['cross_attentions']), 2)]
-        cross_attentions = torch.stack(cross_attentions).transpose(0, 1) # [batch_size, num_cross_attentions, num_heads, query_len, 1+maximum_node_num]
-        mean_cross_attentions = cross_attentions.mean(dim=1).mean(1) # [batch_size, query_len, 1+maximum_node_num]
-        masked_feat = mean_cross_attentions * graph_masks.unsqueeze(1).float()
+        # ###============== Attention score regularization ===================###
+        # att_cos = 0
+        # att_kl = 0
+        # att_l2 = 0
+        # cross_attentions = query_output['cross_attentions'] # Cross attention and past key values are mixed in this tuple
+        # cross_attentions = [cross_attentions[i] for i in range(0, len(query_output['cross_attentions']), 2)]
+        # cross_attentions = torch.stack(cross_attentions).transpose(0, 1) # [batch_size, num_cross_attentions, num_heads, query_len, 1+maximum_node_num]
+        # mean_cross_attentions = cross_attentions.mean(dim=1).mean(1) # [batch_size, query_len, 1+maximum_node_num]
+        # masked_feat = mean_cross_attentions * graph_masks.unsqueeze(1).float()
 
-        att_cos = self.compute_avg_cosine_similarity(masked_feat)
-        att_kl = self.compute_average_symmetrised_kl_divergence(masked_feat)
-        att_l2 = self.compute_mean_l2_distance(masked_feat)
+        # att_cos = self.compute_avg_cosine_similarity(masked_feat)
+        # att_kl = self.compute_average_symmetrised_kl_divergence(masked_feat)
+        # att_l2 = self.compute_mean_l2_distance(masked_feat)
         
         return {
             "loss": loss,
-            "cross_attentions": query_output.cross_attentions,
+            # "cross_attentions": query_output.cross_attentions,
             "generation_attentions": generation_attentions,
             "target_start_idx": target_start_idx,
-            "att_cos": att_cos.mean(),
-            "att_kl": att_kl.mean(),
-            "att_l2": att_l2.mean(),
+            # "att_cos": att_cos.mean(),
+            # "att_kl": att_kl.mean(),
+            # "att_l2": att_l2.mean(),
         }
+
+    def forward_graph_list(self, graph_list):
+        mol_tokens_list = []
+        for graph in graph_list:
+            graph_embeds, graph_masks = self.graph_encoder(graph)
+            if not self.tune_gnn:
+                graph_embeds = graph_embeds.detach()
+            graph_embeds = self.ln_graph(graph_embeds, graph_masks)
+            device = graph_embeds.device
+            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+            query_output = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=graph_embeds,
+                encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+                return_dict=True,
+                output_attentions=True,
+            )
+            if self.args.query_index != -1:
+                num_query = query_output.last_hidden_state.size(1)
+                assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+                new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+                query_output.last_hidden_state = new_hidden_state
+            if self.args.shuffle_query: # Shuffle the query tokens between queries
+                # query_output.last_hidden_state: (batch_size, num_query_token, D)
+                print("shuffle query")
+                query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+            if self.args.zero_query:
+                print("zero query")
+                query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+            mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            mol_tokens_list.append(mol_tokens)
+        return mol_tokens_list
 
     def forward_reaction(self, batch):
         reaction_tokens, notes_tokens, graphs = batch
@@ -485,33 +526,41 @@ class Blip2OPT(Blip2Base):
         prompt_tokens = samples['prompt_tokens']
         # prompt_lens = samples['prompt_lens']
         # with self.maybe_autocast():
-        graph_embeds, graph_masks = self.graph_encoder(graphs)
-        graph_embeds = self.ln_graph(graph_embeds)
+        if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+            mol_tokens_list = self.forward_graph_list(graphs)
+            device = mol_tokens_list[0].device
+        else:
+            graph_embeds, graph_masks = self.graph_encoder(graphs)
+            graph_embeds = self.ln_graph(graph_embeds)
 
-        query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-        query_output = self.Qformer.bert(
-            query_embeds=query_tokens,
-            encoder_hidden_states=graph_embeds,
-            encoder_attention_mask=graph_masks,
-            return_dict=True,
-        )
-        if self.args.query_index != -1:
-            num_query = query_output.last_hidden_state.size(1)
-            assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
-            new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-            new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
-            query_output.last_hidden_state = new_hidden_state
-        if self.args.shuffle_query: # Shuffle the query tokens between queries
-            # query_output.last_hidden_state: (batch_size, num_query_token, D)
-            print("shuffle query")
-            query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
-        if self.args.zero_query:
-            print("zero query")
-            query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-        mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+            query_output = self.Qformer.bert(
+                query_embeds=query_tokens,
+                encoder_hidden_states=graph_embeds,
+                encoder_attention_mask=graph_masks,
+                return_dict=True,
+            )
+            if self.args.query_index != -1:
+                num_query = query_output.last_hidden_state.size(1)
+                assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+                new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+                query_output.last_hidden_state = new_hidden_state
+            if self.args.shuffle_query: # Shuffle the query tokens between queries
+                # query_output.last_hidden_state: (batch_size, num_query_token, D)
+                print("shuffle query")
+                query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+            if self.args.zero_query:
+                print("zero query")
+                query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+            mol_tokens = self.opt_proj(query_output.last_hidden_state)
         
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-        prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
+        if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+            for i, mol_tokens in enumerate(mol_tokens_list):
+                prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1)
+        else:
+            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
 
         outputs = self.opt_model.generate(
             inputs_embeds=prompt_embeds,

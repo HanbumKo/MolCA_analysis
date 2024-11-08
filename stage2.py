@@ -11,6 +11,7 @@ from data_provider.iupac_dm import IupacDM
 from data_provider.iupac_hard_dm import IupacHardDM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from data_provider.property_prediction_dm import PropertyPredictionDM
+from data_provider.forward_reaction_prediction_dm import ForwardReactionPredictionDM
 from model.blip2_stage2 import Blip2Stage2
 
 # torch.set_default_dtype(torch.float16)
@@ -66,6 +67,8 @@ def main(args):
             dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         elif args.root.lower().find('property_prediction') >= 0:
             dm = PropertyPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root.lower().find('forward_reaction_prediction') >= 0:
+            dm = ForwardReactionPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         else:
             dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     
