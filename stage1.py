@@ -8,6 +8,7 @@ import pytorch_lightning.callbacks as plc
 from pytorch_lightning.loggers import CSVLogger
 from model.blip2_stage1 import Blip2Stage1
 from data_provider.stage1_dm import Stage1DM
+from data_provider.pubchem_plusplus_dm import Stage1PlusPlusDM
 from data_provider.stage1_kvplm_dm import Stage1KVPLMDM
 
 
@@ -34,6 +35,8 @@ def main(args):
     # data
     if args.root.find('kv') >= 0:
         dm = Stage1KVPLMDM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, tokenizer, args)
+    elif args.root.find('PubChem++') >= 0:
+        dm = Stage1PlusPlusDM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, tokenizer, args)
     else:
         dm = Stage1DM(args.num_workers, args.batch_size, args.root, args.text_max_len, args.graph_aug, tokenizer,
                       args)
@@ -51,14 +54,24 @@ def main(args):
     #                                      save_top_k=1,
     #                                      monitor='val_loss',
     #                                      ))
-    callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-                                         filename='best',
-                                        #  filename='best{epoch:02d}',
-                                         every_n_epochs=args.save_every_n_epochs, 
-                                         save_last=True, 
-                                         save_top_k=1,
-                                         monitor='val_loss',
-                                         save_on_train_epoch_end=True))
+    if args.root.find('PubChem++') >= 0:
+        callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+                                            # filename='best',
+                                            #  filename='best{epoch:02d}',
+                                            every_n_epochs=args.save_every_n_epochs, 
+                                            save_last=True, 
+                                            # save_top_k=1,
+                                            # monitor='val_loss',
+                                            save_on_train_epoch_end=True))
+    else:
+        callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
+                                            filename='best',
+                                            #  filename='best{epoch:02d}',
+                                            every_n_epochs=args.save_every_n_epochs, 
+                                            save_last=True, 
+                                            save_top_k=1,
+                                            monitor='val_loss',
+                                            save_on_train_epoch_end=True))
     
     find_unused_parameters = (not args.gtm) or (not args.lm)
     logger = CSVLogger(save_dir=f'./all_checkpoints/{args.filename}/')

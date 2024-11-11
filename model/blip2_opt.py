@@ -259,6 +259,9 @@ class Blip2OPT(Blip2Base):
         if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
             mol_tokens_list = self.forward_graph_list(graphs)
             device = mol_tokens_list[0].device
+        elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
+            mol_tokens_list = self.forward_graph_list(graphs)
+            device = mol_tokens_list[0].device
         else:
             graph_embeds, graph_masks = self.graph_encoder(graphs)
             if not self.tune_gnn:
@@ -298,6 +301,9 @@ class Blip2OPT(Blip2Base):
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
         if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+            for i, mol_tokens in enumerate(mol_tokens_list):
+                prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
+        elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
             for i, mol_tokens in enumerate(mol_tokens_list):
                 prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
         else:
@@ -529,6 +535,9 @@ class Blip2OPT(Blip2Base):
         if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
             mol_tokens_list = self.forward_graph_list(graphs)
             device = mol_tokens_list[0].device
+        elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
+            mol_tokens_list = self.forward_graph_list(graphs)
+            device = mol_tokens_list[0].device
         else:
             graph_embeds, graph_masks = self.graph_encoder(graphs)
             graph_embeds = self.ln_graph(graph_embeds)
@@ -559,6 +568,9 @@ class Blip2OPT(Blip2Base):
         if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
             for i, mol_tokens in enumerate(mol_tokens_list):
                 prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1)
+        elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
+            for i, mol_tokens in enumerate(mol_tokens_list):
+                prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
         else:
             prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
 

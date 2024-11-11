@@ -315,6 +315,14 @@ class Blip2Stage2(pl.LightningModule):
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint'))
                     for key, value in result_dict.items():
                         self.log(key, value, sync_dist=False)
+                elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
+                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                    for key, value in result_dict.items():
+                        self.log(key, value, sync_dist=False)
+                elif self.args.root.lower().find('retrosynthesis') >= 0: # reagent prediction
+                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                    for key, value in result_dict.items():
+                        self.log(key, value, sync_dist=False)
                 else: # Text generation problem
                     ## fixme: I am not sure if the max length is the same as previous experiments
                     bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
@@ -340,6 +348,14 @@ class Blip2Stage2(pl.LightningModule):
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint'))
                     for key, value in result_dict.items():
                         self.log(key, value, sync_dist=False)
+                elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
+                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                    for key, value in result_dict.items():
+                        self.log(key, value, sync_dist=False)
+                elif self.args.root.lower().find('retrosynthesis') >= 0: # reagent prediction
+                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                    for key, value in result_dict.items():
+                        self.log(key, value, sync_dist=False)
                 else: # Text generation problem
                     ## fixme: I am not sure if the max length is the same as previous experiments
                     bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
@@ -363,6 +379,14 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("validity_val", validity, sync_dist=False)
                 elif self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint'))
+                    for key, value in result_dict.items():
+                        self.log(key, value, sync_dist=False)
+                elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
+                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                    for key, value in result_dict.items():
+                        self.log(key, value, sync_dist=False)
+                elif self.args.root.lower().find('retrosynthesis') >= 0: # reagent prediction
+                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
                         self.log(key, value, sync_dist=False)
                 else: # Text generation problem
@@ -435,7 +459,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--peft_config', type=str, default=None)
         parser.add_argument('--peft_dir', type=str, default='')
 
-        parser.add_argument('--save_every_n_epochs', type=int, default=10)
+        parser.add_argument('--save_every_n_epochs', type=int, default=1)
         ## quantization
         parser.add_argument('--load_in_8bit', action='store_true', default=False)
 

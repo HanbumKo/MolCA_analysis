@@ -12,6 +12,8 @@ from data_provider.iupac_hard_dm import IupacHardDM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from data_provider.property_prediction_dm import PropertyPredictionDM
 from data_provider.forward_reaction_prediction_dm import ForwardReactionPredictionDM
+from data_provider.reagent_prediction_dm import ReagentPredictionDM
+from data_provider.retrosynthesis_dm import RetrosynthesisDM
 from model.blip2_stage2 import Blip2Stage2
 
 # torch.set_default_dtype(torch.float16)
@@ -69,6 +71,10 @@ def main(args):
             dm = PropertyPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         elif args.root.lower().find('forward_reaction_prediction') >= 0:
             dm = ForwardReactionPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root.lower().find('reagent_prediction') >= 0:
+            dm = ReagentPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root.lower().find('retrosynthesis') >= 0:
+            dm = RetrosynthesisDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         else:
             dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
     
