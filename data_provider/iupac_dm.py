@@ -228,26 +228,85 @@ class IupacDM(LightningDataModule):
         # else:
         #     self.test_dataset = IUPACDataset(root+'test.pt', text_max_len, self.prompt)
 
-        # # For test subset of train dataset
-        # self.train_subset_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
-        # data = self.train_subset_dataset.data
-        # slices = self.train_subset_dataset.slices
-        # data['x'] = data['x'][:slices['x'][1000], :]
-        # data['edge_index'] = data['edge_index'][:, :slices['edge_index'][1000]]
-        # data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][1000], :]
-        # data['text'] = data['text'][:slices['text'][1000]]
-        # data['smiles'] = data['smiles'][:slices['smiles'][1000]]
-        # data['cid'] = data['cid'][:slices['cid'][1000]]
-        # data['iupac'] = data['iupac'][:slices['iupac'][1000]]
-        # slices['x'] = slices['x'][:1001]
-        # slices['edge_index'] = slices['edge_index'][:1001]
-        # slices['edge_attr'] = slices['edge_attr'][:1001]
-        # slices['text'] = slices['text'][:1001]
-        # slices['smiles'] = slices['smiles'][:1001]
-        # slices['cid'] = slices['cid'][:1001]
-        # slices['iupac'] = slices['iupac'][:1001]
-        # self.train_subset_dataset.data = data
-        # self.train_subset_dataset.slices = slices
+        # For test subset of train dataset
+        self.train_subset_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
+        size = 1000
+        data = self.train_subset_dataset.data
+        slices = self.train_subset_dataset.slices
+        data['x'] = data['x'][:slices['x'][size], :]
+        data['edge_index'] = data['edge_index'][:, :slices['edge_index'][size]]
+        data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][size], :]
+        data['text'] = data['text'][:slices['text'][size]]
+        data['smiles'] = data['smiles'][:slices['smiles'][size]]
+        data['cid'] = data['cid'][:slices['cid'][size]]
+        data['iupac'] = data['iupac'][:slices['iupac'][size]]
+        slices['x'] = slices['x'][:size+1]
+        slices['edge_index'] = slices['edge_index'][:size+1]
+        slices['edge_attr'] = slices['edge_attr'][:size+1]
+        slices['text'] = slices['text'][:size+1]
+        slices['smiles'] = slices['smiles'][:size+1]
+        slices['cid'] = slices['cid'][:size+1]
+        slices['iupac'] = slices['iupac'][:size+1]
+        self.train_subset_dataset.data = data
+        self.train_subset_dataset.slices = slices
+        
+        # data = self.train_dataset.data
+        # slices = self.train_dataset.slices
+        # data['x'] = data['x'][:slices['x'][size], :]
+        # data['edge_index'] = data['edge_index'][:, :slices['edge_index'][size]]
+        # data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][size], :]
+        # data['text'] = data['text'][:slices['text'][size]]
+        # data['smiles'] = data['smiles'][:slices['smiles'][size]]
+        # data['cid'] = data['cid'][:slices['cid'][size]]
+        # data['iupac'] = data['iupac'][:slices['iupac'][size]]
+        # slices['x'] = slices['x'][:size+1]
+        # slices['edge_index'] = slices['edge_index'][:size+1]
+        # slices['edge_attr'] = slices['edge_attr'][:size+1]
+        # slices['text'] = slices['text'][:size+1]
+        # slices['smiles'] = slices['smiles'][:size+1]
+        # slices['cid'] = slices['cid'][:size+1]
+        # slices['iupac'] = slices['iupac'][:size+1]
+        # self.train_dataset.data = data
+        # self.train_dataset.slices = slices
+        
+        # data = self.val_dataset.data
+        # slices = self.val_dataset.slices
+        # data['x'] = data['x'][:slices['x'][size], :]
+        # data['edge_index'] = data['edge_index'][:, :slices['edge_index'][size]]
+        # data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][size], :]
+        # data['text'] = data['text'][:slices['text'][size]]
+        # data['smiles'] = data['smiles'][:slices['smiles'][size]]
+        # data['cid'] = data['cid'][:slices['cid'][size]]
+        # data['iupac'] = data['iupac'][:slices['iupac'][size]]
+        # slices['x'] = slices['x'][:size+1]
+        # slices['edge_index'] = slices['edge_index'][:size+1]
+        # slices['edge_attr'] = slices['edge_attr'][:size+1]
+        # slices['text'] = slices['text'][:size+1]
+        # slices['smiles'] = slices['smiles'][:size+1]
+        # slices['cid'] = slices['cid'][:size+1]
+        # slices['iupac'] = slices['iupac'][:size+1]
+        # self.val_dataset.data = data
+        # self.val_dataset.slices = slices
+        
+        # data = self.test_dataset.data
+        # slices = self.test_dataset.slices
+        # data['x'] = data['x'][:slices['x'][size], :]
+        # data['edge_index'] = data['edge_index'][:, :slices['edge_index'][size]]
+        # data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][size], :]
+        # data['text'] = data['text'][:slices['text'][size]]
+        # data['smiles'] = data['smiles'][:slices['smiles'][size]]
+        # data['cid'] = data['cid'][:slices['cid'][size]]
+        # data['iupac'] = data['iupac'][:slices['iupac'][size]]
+        # slices['x'] = slices['x'][:size+1]
+        # slices['edge_index'] = slices['edge_index'][:size+1]
+        # slices['edge_attr'] = slices['edge_attr'][:size+1]
+        # slices['text'] = slices['text'][:size+1]
+        # slices['smiles'] = slices['smiles'][:size+1]
+        # slices['cid'] = slices['cid'][:size+1]
+        # slices['iupac'] = slices['iupac'][:size+1]
+        # self.test_dataset.data = data
+        # self.test_dataset.slices = slices   
+        
 
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
@@ -259,6 +318,7 @@ class IupacDM(LightningDataModule):
         self.train_dataset.tokenizer = tokenizer
         self.val_dataset.tokenizer = tokenizer
         self.test_dataset.tokenizer = tokenizer
+        self.train_subset_dataset.tokenizer = tokenizer
         self.mol_token_id = self.tokenizer.mol_token_id
         # self.tokenizer.mol_token_id = tokenizer("<mol>", add_special_tokens=False).input_ids[0]
 
@@ -287,16 +347,16 @@ class IupacDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
-        # val_loader_2 = DataLoader(
-        #     self.val_dataset,
-        #     batch_size=self.inference_batch_size,
-        #     shuffle=False,
-        #     num_workers=self.num_workers,
-        #     pin_memory=False,
-        #     drop_last=False,
-        #     persistent_workers=True,
-        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
-        # )
+        val_loader_2 = DataLoader(
+            self.val_dataset,
+            batch_size=self.inference_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            drop_last=False,
+            persistent_workers=True,
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        )
         test_loader = DataLoader(
             self.test_dataset,
             batch_size=self.inference_batch_size,
@@ -307,18 +367,18 @@ class IupacDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
-        # train_subset_loader = DataLoader(
-        #     self.test_dataset,
-        #     batch_size=self.inference_batch_size,
-        #     shuffle=False,
-        #     num_workers=self.num_workers,
-        #     pin_memory=False,
-        #     drop_last=False,
-        #     persistent_workers=True,
-        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
-        # )
-        # return [val_loader, test_loader, train_subset_loader, val_loader_2]
-        return [val_loader, test_loader]
+        train_subset_loader = DataLoader(
+            self.train_subset_dataset,
+            batch_size=self.inference_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            drop_last=False,
+            persistent_workers=True,
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        )
+        return [val_loader, test_loader, train_subset_loader, val_loader_2]
+        # return [val_loader, test_loader]
     
     def test_dataloader(self):
         loader = DataLoader(

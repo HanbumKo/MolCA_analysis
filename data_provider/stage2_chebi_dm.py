@@ -210,10 +210,10 @@ class Stage2CheBIDM(LightningDataModule):
         self.val_dataset = CheBIDataset(root + '/validation.txt', text_max_len, self.prompt)
         self.test_dataset = CheBIDataset(root + '/test.txt', text_max_len, self.prompt)
 
-        # # For test subset of train dataset
-        # self.train_subset_dataset = CheBIDataset(root + '/train.txt', text_max_len, self.prompt)
-        # self.train_subset_dataset.smiles_list = self.train_subset_dataset.smiles_list[:1000]
-        # self.train_subset_dataset.text_list = self.train_subset_dataset.text_list[:1000]
+        # For test subset of train dataset
+        self.train_subset_dataset = CheBIDataset(root + '/train.txt', text_max_len, self.prompt)
+        self.train_subset_dataset.smiles_list = self.train_subset_dataset.smiles_list[:1000]
+        self.train_subset_dataset.text_list = self.train_subset_dataset.text_list[:1000]
 
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
@@ -226,6 +226,7 @@ class Stage2CheBIDM(LightningDataModule):
         self.train_dataset.tokenizer = tokenizer
         self.val_dataset.tokenizer = tokenizer
         self.test_dataset.tokenizer = tokenizer
+        self.train_subset_dataset.tokenizer = tokenizer
         self.mol_token_id = self.tokenizer.mol_token_id
         # self.tokenizer.mol_token_id = tokenizer("<mol>", add_special_tokens=False).input_ids[0]
 
@@ -267,16 +268,16 @@ class Stage2CheBIDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
         )
-        # val_loader_2 = DataLoader(
-        #     self.val_dataset,
-        #     batch_size=self.inference_batch_size,
-        #     shuffle=False,
-        #     num_workers=self.num_workers,
-        #     pin_memory=False,
-        #     drop_last=False,
-        #     persistent_workers=True,
-        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
-        # )
+        val_loader_2 = DataLoader(
+            self.val_dataset,
+            batch_size=self.inference_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            drop_last=False,
+            persistent_workers=True,
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+        )
         test_loader = DataLoader(
             self.test_dataset,
             batch_size=self.inference_batch_size,
@@ -287,18 +288,18 @@ class Stage2CheBIDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
         )
-        # train_subset_loader = DataLoader(
-        #     self.train_subset_dataset,
-        #     batch_size=self.inference_batch_size,
-        #     shuffle=False,
-        #     num_workers=self.num_workers,
-        #     pin_memory=False,
-        #     drop_last=False,
-        #     persistent_workers=True,
-        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
-        # )
-        # return [val_loader, test_loader, train_subset_loader, val_loader_2]
-        return [val_loader, test_loader]
+        train_subset_loader = DataLoader(
+            self.train_subset_dataset,
+            batch_size=self.inference_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            drop_last=False,
+            persistent_workers=True,
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal),
+        )
+        return [val_loader, test_loader, train_subset_loader, val_loader_2]
+        # return [val_loader, test_loader]
     
     def test_dataloader(self):
         loader = DataLoader(

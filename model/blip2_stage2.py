@@ -155,12 +155,12 @@ class Blip2Stage2(pl.LightningModule):
                 ## fixme: I am not sure if the max length is the same as previous experiments
                 bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
                     caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
-                self.log("bleu2", bleu2, sync_dist=False)
-                self.log("bleu4", bleu4, sync_dist=False)
-                self.log("rouge_1", rouge_1, sync_dist=False)
-                self.log("rouge_2", rouge_2, sync_dist=False)
-                self.log("rouge_l", rouge_l, sync_dist=False)
-                self.log("meteor_score", meteor_score, sync_dist=False)
+                self.log("bleu2", bleu2, sync_dist=True)
+                self.log("bleu4", bleu4, sync_dist=True)
+                self.log("rouge_1", rouge_1, sync_dist=True)
+                self.log("rouge_2", rouge_2, sync_dist=True)
+                self.log("rouge_l", rouge_l, sync_dist=True)
+                self.log("meteor_score", meteor_score, sync_dist=True)
 
     def save_predictions(self, predictions, targets, filename='predictions.txt'):
         assert len(predictions) == len(targets)
@@ -307,32 +307,32 @@ class Blip2Stage2(pl.LightningModule):
                 self.save_predictions(all_predictions, all_targets, filename=f'predictions_epoch{self.current_epoch}_test.txt')
                 if self.is_regression:
                     mae, mse, rmse, validity = regression_evaluate(all_predictions, all_targets)
-                    self.log("mae", mae, sync_dist=False)
-                    self.log("mse", mse, sync_dist=False)
-                    self.log("rmse", rmse, sync_dist=False)
-                    self.log("validity", validity, sync_dist=False)
+                    self.log("mae_test", mae, sync_dist=False)
+                    self.log("mse_test", mse, sync_dist=False)
+                    self.log("rmse_test", rmse, sync_dist=False)
+                    self.log("validity_test", validity, sync_dist=False)
                 elif self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
+                        self.log(key+"_test", value, sync_dist=False)
                 elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
-                elif self.args.root.lower().find('retrosynthesis') >= 0: # reagent prediction
+                        self.log(key+"_test", value, sync_dist=False)
+                elif self.args.root.lower().find('retrosynthesis') >= 0: # retrosynthesis
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
+                        self.log(key+"_test", value, sync_dist=False)
                 else: # Text generation problem
                     ## fixme: I am not sure if the max length is the same as previous experiments
                     bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
                         caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
-                    self.log("bleu2", bleu2, sync_dist=False)
-                    self.log("bleu4", bleu4, sync_dist=False)
-                    self.log("rouge_1", rouge_1, sync_dist=False)
-                    self.log("rouge_2", rouge_2, sync_dist=False)
-                    self.log("rouge_l", rouge_l, sync_dist=False)
-                    self.log("meteor_score", meteor_score, sync_dist=False)
+                    self.log("bleu2_test", bleu2, sync_dist=False)
+                    self.log("bleu4_test", bleu4, sync_dist=False)
+                    self.log("rouge_1_test", rouge_1, sync_dist=False)
+                    self.log("rouge_2_test", rouge_2, sync_dist=False)
+                    self.log("rouge_l_test", rouge_l, sync_dist=False)
+                    self.log("meteor_score_test", meteor_score, sync_dist=False)
 
             all_predictions_train = [i for ii in all_predictions_train for i in ii]
             all_targets_train = [i for ii in all_targets_train for i in ii]
@@ -345,21 +345,21 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("rmse_train", rmse, sync_dist=False)
                     self.log("validity_train", validity, sync_dist=False)
                 elif self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
-                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint'))
+                    result_dict = calculate_smiles_metrics(all_predictions_train, all_targets_train, metrics=('exact_match', 'fingerprint'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
+                        self.log(key+"_train", value, sync_dist=False)
                 elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
-                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                    result_dict = calculate_smiles_metrics(all_predictions_train, all_targets_train, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
-                elif self.args.root.lower().find('retrosynthesis') >= 0: # reagent prediction
-                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                        self.log(key+"_train", value, sync_dist=False)
+                elif self.args.root.lower().find('retrosynthesis') >= 0: # retrosynthesis
+                    result_dict = calculate_smiles_metrics(all_predictions_train, all_targets_train, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
+                        self.log(key+"_train", value, sync_dist=False)
                 else: # Text generation problem
                     ## fixme: I am not sure if the max length is the same as previous experiments
                     bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                        caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
+                        caption_evaluate(all_predictions_train, all_targets_train, self.tokenizer, self.max_len * 2) 
                     self.log("bleu2_train", bleu2, sync_dist=False)
                     self.log("bleu4_train", bleu4, sync_dist=False)
                     self.log("rouge_1_train", rouge_1, sync_dist=False)
@@ -378,21 +378,21 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("rmse_val", rmse, sync_dist=False)
                     self.log("validity_val", validity, sync_dist=False)
                 elif self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
-                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint'))
+                    result_dict = calculate_smiles_metrics(all_predictions_val, all_targets_val, metrics=('exact_match', 'fingerprint'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
+                        self.log(key+"_val", value, sync_dist=False)
                 elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
-                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                    result_dict = calculate_smiles_metrics(all_predictions_val, all_targets_val, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
-                elif self.args.root.lower().find('retrosynthesis') >= 0: # reagent prediction
-                    result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                        self.log(key+"_val", value, sync_dist=False)
+                elif self.args.root.lower().find('retrosynthesis') >= 0: # retrosynthesis
+                    result_dict = calculate_smiles_metrics(all_predictions_val, all_targets_val, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
-                        self.log(key, value, sync_dist=False)
+                        self.log(key+"_val", value, sync_dist=False)
                 else: # Text generation problem
                     ## fixme: I am not sure if the max length is the same as previous experiments
                     bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                        caption_evaluate(all_predictions, all_targets, self.tokenizer, self.max_len * 2) 
+                        caption_evaluate(all_predictions_val, all_targets_val, self.tokenizer, self.max_len * 2) 
                     self.log("bleu2_val", bleu2, sync_dist=False)
                     self.log("bleu4_val", bleu4, sync_dist=False)
                     self.log("rouge_1_val", rouge_1, sync_dist=False)

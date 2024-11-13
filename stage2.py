@@ -64,31 +64,39 @@ def main(args):
     # data
     if args.iupac_prediction:
         dm = IupacDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        monitor = "meteor_score_val"
     else:
         if args.root.lower().find('chebi') >= 0:
             dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+            monitor = "meteor_score_val"
         elif args.root.lower().find('property_prediction') >= 0:
             dm = PropertyPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+            monitor = "mae_val"
         elif args.root.lower().find('forward_reaction_prediction') >= 0:
             dm = ForwardReactionPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+            monitor = "num_t1_exact_match_val"
         elif args.root.lower().find('reagent_prediction') >= 0:
             dm = ReagentPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+            monitor = "num_t1_exact_match_val"
         elif args.root.lower().find('retrosynthesis') >= 0:
             dm = RetrosynthesisDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+            monitor = "num_t1_exact_match_val"
         else:
             dm = Stage2DM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+            monitor = "meteor_score_val"
     
     callbacks = []
     ## fixme save only used parameters
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", every_n_epochs=10, save_top_k=-1))
     callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
-                                         filename='best',
-                                        #  filename='best{epoch:02d}',
-                                         every_n_epochs=args.save_every_n_epochs, 
+                                        #  filename='best',
+                                         filename='{epoch:02d}',
+                                         every_n_epochs=args.caption_eval_epoch, 
                                          save_last=True, 
-                                         save_top_k=1,
-                                         monitor='val molecule loss/dataloader_idx_0',
-                                         save_on_train_epoch_end=True))
+                                         save_top_k=-1,
+                                        #  monitor=monitor,
+                                        #  monitor='val molecule loss/dataloader_idx_0',
+                                         save_on_train_epoch_end=False))
     # callbacks.append(plc.ModelCheckpoint(dirpath="all_checkpoints/"+args.filename+"/", 
     #                                      filename='last', 
     #                                      save_top_k=1,

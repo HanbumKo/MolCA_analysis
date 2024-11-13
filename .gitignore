@@ -9,4 +9,5 @@ llms
 Text2graph
 analysis_results/
 analysis_results_origin/
+all_checkpoints_backup/
 .vscode/

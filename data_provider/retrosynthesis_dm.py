@@ -178,6 +178,9 @@ class RetrosynthesisDM(LightningDataModule):
         self.train_dataset = Retrosynthesis(root+'train.pt', text_max_len, self.prompt)
         self.val_dataset = Retrosynthesis(root+'val.pt', text_max_len, self.prompt)
         self.test_dataset = Retrosynthesis(root+'test.pt', text_max_len, self.prompt)
+        
+        self.train_subset_dataset = Retrosynthesis(root+'train.pt', text_max_len, self.prompt)
+        self.train_subset_dataset.data_list = self.train_subset_dataset.data_list[:1000]
 
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
@@ -189,6 +192,7 @@ class RetrosynthesisDM(LightningDataModule):
         self.train_dataset.tokenizer = tokenizer
         self.val_dataset.tokenizer = tokenizer
         self.test_dataset.tokenizer = tokenizer
+        self.train_subset_dataset.tokenizer = tokenizer
         self.mol_token_id = self.tokenizer.mol_token_id
         # self.tokenizer.mol_token_id = tokenizer("<mol>", add_special_tokens=False).input_ids[0]
 
@@ -217,16 +221,16 @@ class RetrosynthesisDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
-        # val_loader_2 = DataLoader(
-        #     self.val_dataset,
-        #     batch_size=self.inference_batch_size,
-        #     shuffle=False,
-        #     num_workers=self.num_workers,
-        #     pin_memory=False,
-        #     drop_last=False,
-        #     persistent_workers=True,
-        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
-        # )
+        val_loader_2 = DataLoader(
+            self.val_dataset,
+            batch_size=self.inference_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            drop_last=False,
+            persistent_workers=True,
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        )
         test_loader = DataLoader(
             self.test_dataset,
             batch_size=self.inference_batch_size,
@@ -237,18 +241,18 @@ class RetrosynthesisDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
-        # train_subset_loader = DataLoader(
-        #     self.test_dataset,
-        #     batch_size=self.inference_batch_size,
-        #     shuffle=False,
-        #     num_workers=self.num_workers,
-        #     pin_memory=False,
-        #     drop_last=False,
-        #     persistent_workers=True,
-        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
-        # )
-        # return [val_loader, test_loader, train_subset_loader, val_loader_2]
-        return [val_loader, test_loader]
+        train_subset_loader = DataLoader(
+            self.train_subset_dataset,
+            batch_size=self.inference_batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=False,
+            drop_last=False,
+            persistent_workers=True,
+            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        )
+        return [val_loader, test_loader, train_subset_loader, val_loader_2]
+        # return [val_loader, test_loader]
     
     def test_dataloader(self):
         loader = DataLoader(
