@@ -2,6 +2,7 @@ import os
 from typing import Any, Dict
 import torch
 from model.blip2_opt import Blip2OPT
+from model.blip2_opt_only import Blip2OPTOnly
 from model.blip2_llama import Blip2Llama
 from model.blip2_t5 import Blip2T5
 import pytorch_lightning as pl
@@ -77,6 +78,8 @@ class Blip2Stage2(pl.LightningModule):
         self.is_regression = args.root.lower().find('property_prediction') >= 0
         if args.opt_model.find('galactica') >= 0:
             self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
+        elif args.opt_model.find('only') >= 0:
+            self.blip2opt = Blip2OPTOnly(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
             self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         elif args.opt_model.find('t5') >= 0:
@@ -311,7 +314,7 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("mse_test", mse, sync_dist=False)
                     self.log("rmse_test", rmse, sync_dist=False)
                     self.log("validity_test", validity, sync_dist=False)
-                elif self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+                elif self.args.root.lower().find('forward_reaction_prediction') >= 0 or self.args.root == "data/USPTO_forward/USPTO_50K_data/": # forward reaction prediction
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint'))
                     for key, value in result_dict.items():
                         self.log(key+"_test", value, sync_dist=False)
@@ -319,7 +322,7 @@ class Blip2Stage2(pl.LightningModule):
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
                         self.log(key+"_test", value, sync_dist=False)
-                elif self.args.root.lower().find('retrosynthesis') >= 0: # retrosynthesis
+                elif self.args.root.lower().find('retrosynthesis') >= 0 or self.args.root == "data/USPTO_retrosynthesis/USPTO_50K_data/": # retrosynthesis
                     result_dict = calculate_smiles_metrics(all_predictions, all_targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
                         self.log(key+"_test", value, sync_dist=False)
@@ -344,7 +347,7 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("mse_train", mse, sync_dist=False)
                     self.log("rmse_train", rmse, sync_dist=False)
                     self.log("validity_train", validity, sync_dist=False)
-                elif self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+                elif self.args.root.lower().find('forward_reaction_prediction') >= 0 or self.args.root == "data/USPTO_forward/USPTO_50K_data/": # forward reaction prediction
                     result_dict = calculate_smiles_metrics(all_predictions_train, all_targets_train, metrics=('exact_match', 'fingerprint'))
                     for key, value in result_dict.items():
                         self.log(key+"_train", value, sync_dist=False)
@@ -352,7 +355,7 @@ class Blip2Stage2(pl.LightningModule):
                     result_dict = calculate_smiles_metrics(all_predictions_train, all_targets_train, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
                         self.log(key+"_train", value, sync_dist=False)
-                elif self.args.root.lower().find('retrosynthesis') >= 0: # retrosynthesis
+                elif self.args.root.lower().find('retrosynthesis') >= 0 or self.args.root == "data/USPTO_retrosynthesis/USPTO_50K_data/": # retrosynthesis
                     result_dict = calculate_smiles_metrics(all_predictions_train, all_targets_train, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
                         self.log(key+"_train", value, sync_dist=False)
@@ -377,7 +380,7 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("mse_val", mse, sync_dist=False)
                     self.log("rmse_val", rmse, sync_dist=False)
                     self.log("validity_val", validity, sync_dist=False)
-                elif self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+                elif self.args.root.lower().find('forward_reaction_prediction') >= 0 or self.args.root == "data/USPTO_forward/USPTO_50K_data/": # forward reaction prediction
                     result_dict = calculate_smiles_metrics(all_predictions_val, all_targets_val, metrics=('exact_match', 'fingerprint'))
                     for key, value in result_dict.items():
                         self.log(key+"_val", value, sync_dist=False)
@@ -385,7 +388,7 @@ class Blip2Stage2(pl.LightningModule):
                     result_dict = calculate_smiles_metrics(all_predictions_val, all_targets_val, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
                         self.log(key+"_val", value, sync_dist=False)
-                elif self.args.root.lower().find('retrosynthesis') >= 0: # retrosynthesis
+                elif self.args.root.lower().find('retrosynthesis') >= 0 or self.args.root == "data/USPTO_retrosynthesis/USPTO_50K_data/": # retrosynthesis
                     result_dict = calculate_smiles_metrics(all_predictions_val, all_targets_val, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                     for key, value in result_dict.items():
                         self.log(key+"_val", value, sync_dist=False)

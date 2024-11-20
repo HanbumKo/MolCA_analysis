@@ -11,9 +11,9 @@ from data_provider.iupac_dm import IupacDM
 from data_provider.iupac_hard_dm import IupacHardDM
 from data_provider.stage2_chebi_dm import Stage2CheBIDM
 from data_provider.property_prediction_dm import PropertyPredictionDM
-from data_provider.forward_reaction_prediction_dm import ForwardReactionPredictionDM
+from data_provider.forward_reaction_prediction_dm import ForwardReactionPredictionDM, USPTOForwardReactionPredictionDM
 from data_provider.reagent_prediction_dm import ReagentPredictionDM
-from data_provider.retrosynthesis_dm import RetrosynthesisDM
+from data_provider.retrosynthesis_dm import RetrosynthesisDM, USPTORetrosynthesisDM
 from model.blip2_stage2 import Blip2Stage2
 
 # torch.set_default_dtype(torch.float16)
@@ -55,7 +55,7 @@ def main(args):
 
     print('total params:', sum(p.numel() for p in model.parameters()))
 
-    if args.opt_model.find('galactica') >= 0 or args.opt_model.find('t5') >= 0:
+    if args.opt_model.find('galactica') >= 0 or args.opt_model.find('t5') >= 0 or args.opt_model == 'only':
         tokenizer = model.blip2opt.opt_tokenizer
     elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
         tokenizer = model.blip2opt.llm_tokenizer
@@ -66,7 +66,13 @@ def main(args):
         dm = IupacDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         monitor = "meteor_score_val"
     else:
-        if args.root.lower().find('chebi') >= 0:
+        if args.root == "data/USPTO_retrosynthesis/USPTO_50K_data/":
+            dm = USPTORetrosynthesisDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+            monitor = "num_t1_exact_match_val"
+        elif args.root == "data/USPTO_forward/USPTO_50K_data/":
+            dm = USPTOForwardReactionPredictionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+            monitor = "num_t1_exact_match_val"
+        elif args.root.lower().find('chebi') >= 0:
             dm = Stage2CheBIDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
             monitor = "meteor_score_val"
         elif args.root.lower().find('property_prediction') >= 0:
