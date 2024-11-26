@@ -581,6 +581,8 @@ class Blip2OPT(Blip2Base):
         expanded_token_type_ids = []
         expanded_is_mol_token = []
         
+        false_lenghts = self.count_false_sequences(current_is_mol_token)
+        
         for batch_idx in range(batch_size):
             # Find the start and end indices of the '1' values in the current batch
             # mol_start_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][0] # 첫 번째 '1'의 시작 인덱스
