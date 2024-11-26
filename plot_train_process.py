@@ -102,7 +102,7 @@ def save_plot(file_name, version=0):
     elif "_retrosynthesis_" in file_name or "_forward_" in file_name or "_reagent_" in file_name:
         main_metric_name = "num_t1_exact_match"
         main_y_metric_label = "Exact match(↑)"
-        optimal = 1000.
+        optimal = 100.
         metric_list = ["num_t1_exact_match", "num_t1_invalid", "num_t1_no_answer", "t1_maccs_fps", "t1_morgan_fps", "t1_rdk_fps"]
     elif "_chebi20_" in file_name or "_pubchem324k_" in file_name or "_iupac_" in file_name:
         main_metric_name = "meteor_score"
@@ -149,9 +149,15 @@ def save_plot(file_name, version=0):
 
     # Plot the main metric on the right y-axis
     ax2 = ax1.twinx()
-    plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_train"]), label=column_name_to_metric_name[main_metric_name+"_train"], linestyle='--', color=colors[2])
-    plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_val"]), label=column_name_to_metric_name[main_metric_name+"_val"], linestyle='--', color=colors[3])
-    # plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_test"]), label=column_name_to_metric_name[main_metric_name+"_test"], linestyle='--', color=colors[4])
+    if main_y_metric_label == "Exact match(↑)":
+        plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_train"]/df["num_all_train"]*100), label=column_name_to_metric_name[main_metric_name+"_train"], linestyle='--', color=colors[2])
+        plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_val"]/df["num_all_val"]*100), label=column_name_to_metric_name[main_metric_name+"_val"], linestyle='--', color=colors[3])
+        # plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_test"]/df["num_all_test"]), label=column_name_to_metric_name[main_metric_name+"_test"], linestyle='--', color=colors[4])
+
+    else:
+        plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_train"]), label=column_name_to_metric_name[main_metric_name+"_train"], linestyle='--', color=colors[2])
+        plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_val"]), label=column_name_to_metric_name[main_metric_name+"_val"], linestyle='--', color=colors[3])
+        # plot_with_drop_nan(ax2, list(df['step']), list(df[main_metric_name+"_test"]), label=column_name_to_metric_name[main_metric_name+"_test"], linestyle='--', color=colors[4])
     # plot optimal
     ax2.axhline(y=optimal, linestyle=':', label='Optimal', color=colors[5])
     if y_range is not None:
@@ -193,6 +199,10 @@ file_names = [
     "ft_retrosynthesis_stringonly",
     "ft_forward_stringonly",
     
+    "ft_USPTO_forward_from_origin",
+    "ft_USPTO_retrosynthesis_from_origin",
+    "ft_USPTO_forward_stringonly",
+    "ft_USPTO_retrosynthesis_stringonly",
 ]
 for file_name in file_names:
     save_plot(

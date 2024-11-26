@@ -140,14 +140,26 @@ class Blip2OPT(Blip2Base):
             logging.info("freeze graph encoder")
         
         self.num_query_token = num_query_token
-        self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq)
-        ### remove the unused parameters
-        self.Qformer.cls = None
-        self.Qformer.bert.embeddings.word_embeddings = None
-        self.Qformer.bert.embeddings.position_embeddings = None
-        for layer in self.Qformer.bert.encoder.layer:
-            layer.output = None
-            layer.intermediate = None
+        
+        if args.projector == 'qformer':
+            self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq)
+            ### remove the unused parameters
+            self.Qformer.cls = None
+            self.Qformer.bert.embeddings.word_embeddings = None
+            self.Qformer.bert.embeddings.position_embeddings = None
+            for layer in self.Qformer.bert.encoder.layer:
+                layer.output = None
+                layer.intermediate = None
+        elif args.projector == 'mlp':
+            self.projector = nn.Sequential(
+                nn.Linear(self.graph_encoder.num_features, self.args.bert_hidden_dim),
+                nn.ReLU(),
+                nn.Linear(self.args.bert_hidden_dim, self.args.bert_hidden_dim),
+                nn.ReLU(),
+                nn.Linear(self.args.bert_hidden_dim, self.args.bert_hidden_dim),
+            ).to(torch.bfloat16)
+        else:
+            raise NotImplementedError("projector should be either 'qformer' or 'mlp'")
 
         ## initialize opt model
         self.opt_tokenizer = AutoTokenizer.from_pretrained(opt_model, use_fast=False, padding_side='right')
@@ -200,9 +212,14 @@ class Blip2OPT(Blip2Base):
             "\n", add_special_tokens=False
         ).input_ids[0]
 
-        self.opt_proj = nn.Linear(
-            self.Qformer.config.hidden_size, self.opt_model.config.hidden_size
-        )
+        if self.args.projector == 'qformer':
+            self.opt_proj = nn.Linear(
+                self.Qformer.config.hidden_size, self.opt_model.config.hidden_size
+            )
+        elif self.args.projector == 'mlp':
+            self.opt_proj = nn.Linear(
+                self.args.bert_hidden_dim, self.opt_model.config.hidden_size
+            )
         if args.stage2_path:
             self.opt_proj.weight.data = new_state_dict['opt_proj.weight']
             self.opt_proj.bias.data = new_state_dict['opt_proj.bias']
@@ -215,40 +232,46 @@ class Blip2OPT(Blip2Base):
 
     def forward(self, batch):
         graphs, prompt_tokens, text_tokens = batch
-        if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
-            mol_tokens_list = self.forward_graph_list(graphs)
+        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
+            mol_tokens_list = self.forward_graph_list(graphs, prompt_tokens)
             device = mol_tokens_list[0].device
         elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
             mol_tokens_list = self.forward_graph_list(graphs)
             device = mol_tokens_list[0].device
         else:
-            graph_embeds, graph_masks = self.graph_encoder(graphs)
+            graph_embeds, graph_masks = self.graph_encoder(graphs) # graph_masks: (batch_size, maximum_num_node)
             if not self.tune_gnn:
                 graph_embeds = graph_embeds.detach()
-            graph_embeds = self.ln_graph(graph_embeds, graph_masks)
+            graph_embeds = self.ln_graph(graph_embeds, graph_masks) # graph_embeds: (batch_size, maximum_num_node, 300)
             device = graph_embeds.device
-            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=graph_embeds,
-                encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
-                return_dict=True,
-                output_attentions=True,
-            )
-            if self.args.query_index != -1:
-                num_query = query_output.last_hidden_state.size(1)
-                assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
-                new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-                new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
-                query_output.last_hidden_state = new_hidden_state
-            if self.args.shuffle_query: # Shuffle the query tokens between queries
-                # query_output.last_hidden_state: (batch_size, num_query_token, D)
-                print("shuffle query")
-                query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
-            if self.args.zero_query:
-                print("zero query")
-                query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-            mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            if self.args.projector == 'qformer':
+                query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+                query_output = self.Qformer.bert(
+                    query_embeds=query_tokens,
+                    encoder_hidden_states=graph_embeds,
+                    encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+                    return_dict=True,
+                    output_attentions=True,
+                )
+                if self.args.query_index != -1:
+                    num_query = query_output.last_hidden_state.size(1)
+                    assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+                    new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                    new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+                    query_output.last_hidden_state = new_hidden_state
+                if self.args.shuffle_query: # Shuffle the query tokens between queries
+                    # query_output.last_hidden_state: (batch_size, num_query_token, D)
+                    print("shuffle query")
+                    query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+                if self.args.zero_query:
+                    print("zero query")
+                    query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            elif self.args.projector == 'mlp':
+                query_output = self.projector(graph_embeds)
+                mol_tokens = self.opt_proj(query_output)
+                prompt_tokens = self.expand_prompt_token(prompt_tokens, graph_masks)
+            # mol_tokens = self.opt_proj(query_output.last_hidden_state)
         
         empty_targets = torch.ones(prompt_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
         targets = text_tokens.input_ids.masked_fill(
@@ -259,14 +282,18 @@ class Blip2OPT(Blip2Base):
         # (prompt_tokens.input_ids == 22).nonzero(as_tuple=True)[1]
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-        if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
             for i, mol_tokens in enumerate(mol_tokens_list):
                 prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
         elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
             for i, mol_tokens in enumerate(mol_tokens_list):
                 prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
         else:
-            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
+            if self.args.projector == 'qformer':
+                prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
+            elif self.args.projector == 'mlp':
+                for batch_idx in range(prompt_embeds.size(0)):
+                    prompt_embeds[batch_idx, prompt_tokens.is_mol_token[batch_idx]] = mol_tokens[batch_idx, graph_masks[batch_idx]].to(dtype=torch.bfloat16)
         inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
         attention_mask = torch.cat([prompt_tokens.attention_mask, text_tokens.attention_mask], dim=1)
@@ -307,36 +334,41 @@ class Blip2OPT(Blip2Base):
             # "att_l2": att_l2.mean(),
         }
 
-    def forward_graph_list(self, graph_list):
+    def forward_graph_list(self, graph_list, prompt_tokens=None):
         mol_tokens_list = []
-        for graph in graph_list:
+        for i, graph in enumerate(graph_list):
             graph_embeds, graph_masks = self.graph_encoder(graph)
             if not self.tune_gnn:
                 graph_embeds = graph_embeds.detach()
             graph_embeds = self.ln_graph(graph_embeds, graph_masks)
             device = graph_embeds.device
-            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=graph_embeds,
-                encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
-                return_dict=True,
-                output_attentions=True,
-            )
-            if self.args.query_index != -1:
-                num_query = query_output.last_hidden_state.size(1)
-                assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
-                new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-                new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
-                query_output.last_hidden_state = new_hidden_state
-            if self.args.shuffle_query: # Shuffle the query tokens between queries
-                # query_output.last_hidden_state: (batch_size, num_query_token, D)
-                print("shuffle query")
-                query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
-            if self.args.zero_query:
-                print("zero query")
-                query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-            mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            if self.args.projector == 'qformer':
+                query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+                query_output = self.Qformer.bert(
+                    query_embeds=query_tokens,
+                    encoder_hidden_states=graph_embeds,
+                    encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+                    return_dict=True,
+                    output_attentions=True,
+                )
+                if self.args.query_index != -1:
+                    num_query = query_output.last_hidden_state.size(1)
+                    assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+                    new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                    new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+                    query_output.last_hidden_state = new_hidden_state
+                if self.args.shuffle_query: # Shuffle the query tokens between queries
+                    # query_output.last_hidden_state: (batch_size, num_query_token, D)
+                    print("shuffle query")
+                    query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+                if self.args.zero_query:
+                    print("zero query")
+                    query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            elif self.args.projector == 'mlp':
+                query_output = self.projector(graph_embeds)
+                mol_tokens = self.opt_proj(query_output)
+                prompt_tokens_batch = self.expand_prompt_token_multiple(prompt_tokens, graph_masks, i)
             mol_tokens_list.append(mol_tokens)
         return mol_tokens_list
 
@@ -371,7 +403,7 @@ class Blip2OPT(Blip2Base):
         prompt_tokens = samples['prompt_tokens']
         # prompt_lens = samples['prompt_lens']
         # with self.maybe_autocast():
-        if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
             mol_tokens_list = self.forward_graph_list(graphs)
             device = mol_tokens_list[0].device
         elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
@@ -381,37 +413,49 @@ class Blip2OPT(Blip2Base):
             graph_embeds, graph_masks = self.graph_encoder(graphs)
             graph_embeds = self.ln_graph(graph_embeds)
 
-            query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-            query_output = self.Qformer.bert(
-                query_embeds=query_tokens,
-                encoder_hidden_states=graph_embeds,
-                encoder_attention_mask=graph_masks,
-                return_dict=True,
-            )
-            if self.args.query_index != -1:
-                num_query = query_output.last_hidden_state.size(1)
-                assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
-                new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-                new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
-                query_output.last_hidden_state = new_hidden_state
-            if self.args.shuffle_query: # Shuffle the query tokens between queries
-                # query_output.last_hidden_state: (batch_size, num_query_token, D)
-                print("shuffle query")
-                query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
-            if self.args.zero_query:
-                print("zero query")
-                query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-            mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            device = graph_embeds.device
+            if self.args.projector == 'qformer':
+                query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+                query_output = self.Qformer.bert(
+                    query_embeds=query_tokens,
+                    encoder_hidden_states=graph_embeds,
+                    encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+                    return_dict=True,
+                    output_attentions=True,
+                )
+                if self.args.query_index != -1:
+                    num_query = query_output.last_hidden_state.size(1)
+                    assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+                    new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                    new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+                    query_output.last_hidden_state = new_hidden_state
+                if self.args.shuffle_query: # Shuffle the query tokens between queries
+                    # query_output.last_hidden_state: (batch_size, num_query_token, D)
+                    print("shuffle query")
+                    query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+                if self.args.zero_query:
+                    print("zero query")
+                    query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+                mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            elif self.args.projector == 'mlp':
+                query_output = self.projector(graph_embeds)
+                mol_tokens = self.opt_proj(query_output)
+                prompt_tokens = self.expand_prompt_token(prompt_tokens, graph_masks)
         
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-        if self.args.root.lower().find('forward_reaction_prediction') >= 0: # forward reaction prediction
+        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
             for i, mol_tokens in enumerate(mol_tokens_list):
                 prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1)
         elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
             for i, mol_tokens in enumerate(mol_tokens_list):
                 prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
         else:
-            prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1)
+            if self.args.projector == 'qformer':
+                prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
+            elif self.args.projector == 'mlp':
+                for batch_idx in range(prompt_embeds.size(0)):
+                    prompt_embeds[batch_idx, prompt_tokens.is_mol_token[batch_idx]] = mol_tokens[batch_idx, graph_masks[batch_idx]].to(dtype=torch.bfloat16)
+
 
         outputs = self.opt_model.generate(
             inputs_embeds=prompt_embeds,
@@ -433,6 +477,215 @@ class Blip2OPT(Blip2Base):
         
         output_text = [text.strip() for text in output_text]
         return output_text
+
+    def expand_prompt_token(self, prompt_tokens, graph_masks):
+        # Expand the mol tokens to match the number of nodes in the graph, the number of graph is different for each sample
+        # prompt_tokens: {input_ids: (batch_size, prompt_len), token_type_ids: (batch_size, prompt_len), attention_mask: (batch_size, prompt_len), is_mol_token: (batch_size, prompt_len)}
+        # graph_masks: (batch_size, maximum_num_node)
+        batch_size, prompt_len = prompt_tokens.input_ids.shape
+        device = prompt_tokens.input_ids.device
+        
+        # Calculate number of nodes in each graph
+        node_counts = graph_masks.sum(dim=1) # shape: (batch_size)
+
+        expanded_input_ids = []
+        expanded_attention_mask = []
+        expanded_token_type_ids = []
+        expanded_is_mol_token = []
+        
+        for batch_idx in range(batch_size):
+            # Find the start and end indices of the '1' values in the current batch
+            mol_start_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][0] # 첫 번째 '1'의 시작 인덱스
+            mol_end_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][-1] + 1 # 마지막 '1'의 끝 인덱스 + 1
+
+            # Expand the '1' section to match the number of nodes in the graph
+            num_nodes = node_counts[batch_idx].item()
+
+            expanded_section = torch.ones(num_nodes).to(device) * 50000
+            new_input_ids = torch.cat([
+                prompt_tokens.input_ids[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.input_ids[batch_idx][mol_end_idx:] # After '1'
+            ])
+            
+            expanded_section = torch.ones(num_nodes).to(device)
+            new_attention_mask = torch.cat([
+                prompt_tokens.attention_mask[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.attention_mask[batch_idx][mol_end_idx:] # After '1'
+            ])
+            
+            expanded_section = torch.zeros(num_nodes).to(device)
+            new_token_type_ids = torch.cat([
+                prompt_tokens.token_type_ids[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.token_type_ids[batch_idx][mol_end_idx:] # After '1'
+            ])
+
+            expanded_section = torch.ones(num_nodes).to(device) # Generate '1' for the number of nodes
+            # Concatenate the original is_mol_token tensor with the expanded section
+            new_is_mol_token = torch.cat([
+                prompt_tokens.is_mol_token[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.is_mol_token[batch_idx][mol_end_idx:] # After '1'
+            ])
+
+            expanded_input_ids.append(new_input_ids)
+            expanded_attention_mask.append(new_attention_mask)
+            expanded_token_type_ids.append(new_token_type_ids)
+            expanded_is_mol_token.append(new_is_mol_token)
+
+        max_length = max(tensor.size(0) for tensor in expanded_input_ids)
+        padded_input_ids = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=1) for tensor in expanded_input_ids
+        ]
+        padded_attention_mask = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_attention_mask
+        ]
+        padded_token_type_ids = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_token_type_ids
+        ]
+        padded_is_mol_token = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_is_mol_token
+        ]
+
+        prompt_tokens.input_ids = torch.stack(padded_input_ids)
+        prompt_tokens.attention_mask = torch.stack(padded_attention_mask)
+        prompt_tokens.token_type_ids = torch.stack(padded_token_type_ids)
+        prompt_tokens.is_mol_token = torch.stack(padded_is_mol_token).bool()
+        
+        prompt_tokens['input_ids'] = torch.stack(padded_input_ids)
+        prompt_tokens['attention_mask'] = torch.stack(padded_attention_mask)
+        prompt_tokens['token_type_ids'] = torch.stack(padded_token_type_ids)
+        prompt_tokens['is_mol_token'] = torch.stack(padded_is_mol_token)
+
+        return prompt_tokens
+
+    def expand_prompt_token_multiple(self, prompt_tokens, graph_masks, batch_i):
+        # Expand the mol tokens to match the number of nodes in the graph, the number of graph is different for each sample
+        # prompt_tokens: {input_ids: (batch_size, prompt_len), token_type_ids: (batch_size, prompt_len), attention_mask: (batch_size, prompt_len), is_mol_token: (batch_size, prompt_len)}
+        # graph_masks: (batch_size, maximum_num_node)
+        batch_size, _ = graph_masks.shape
+        device = prompt_tokens.input_ids.device
+        
+        # Calculate number of nodes in each graph
+        node_counts = graph_masks.sum(dim=1) # shape: (batch_size)
+        
+        current_input_ids = prompt_tokens.input_ids[batch_i]
+        current_attention_mask = prompt_tokens.attention_mask[batch_i]
+        current_token_type_ids = prompt_tokens.token_type_ids[batch_i]
+        current_is_mol_token = prompt_tokens.is_mol_token[batch_i]
+
+        expanded_input_ids = []
+        expanded_attention_mask = []
+        expanded_token_type_ids = []
+        expanded_is_mol_token = []
+        
+        for batch_idx in range(batch_size):
+            # Find the start and end indices of the '1' values in the current batch
+            # mol_start_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][0] # 첫 번째 '1'의 시작 인덱스
+            # mol_end_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][-1] + 1 # 마지막 '1'의 끝 인덱스 + 1
+            current_is_mol_token = prompt_tokens.is_mol_token[batch_i]
+
+            # Expand the '1' section to match the number of nodes in the graph
+            num_nodes = node_counts[batch_idx].item()
+            
+            one_indices = (current_is_mol_token == 1).nonzero(as_tuple=True)[0]
+            expanded_tensor = torch.zeros_like(current_is_mol_token)
+            if len(one_indices) > 0:
+                # 연속된 구간 계산
+                start_idx = one_indices[0]
+                for i in range(1, len(one_indices)):
+                    if one_indices[i] != one_indices[i - 1] + 1: # 연속이 끊긴 경우
+                        end_idx = one_indices[i - 1] + 1
+                        expanded_tensor[start_idx:start_idx + num_nodes] = 1
+                        start_idx = one_indices[i]
+
+                # 마지막 구간 처리
+                expanded_tensor[start_idx:start_idx + num_nodes] = 1
+
+            expanded_is_mol_token.append(expanded_tensor)
+            
+
+            expanded_section = torch.ones(num_nodes).to(device) * 50000
+            new_input_ids = torch.cat([
+                prompt_tokens.input_ids[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.input_ids[batch_idx][mol_end_idx:] # After '1'
+            ])
+            
+            expanded_section = torch.ones(num_nodes).to(device)
+            new_attention_mask = torch.cat([
+                prompt_tokens.attention_mask[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.attention_mask[batch_idx][mol_end_idx:] # After '1'
+            ])
+            
+            expanded_section = torch.zeros(num_nodes).to(device)
+            new_token_type_ids = torch.cat([
+                prompt_tokens.token_type_ids[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.token_type_ids[batch_idx][mol_end_idx:] # After '1'
+            ])
+
+            expanded_section = torch.ones(num_nodes).to(device) # Generate '1' for the number of nodes
+            # Concatenate the original is_mol_token tensor with the expanded section
+            new_is_mol_token = torch.cat([
+                prompt_tokens.is_mol_token[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.is_mol_token[batch_idx][mol_end_idx:] # After '1'
+            ])
+
+            expanded_input_ids.append(new_input_ids)
+            expanded_attention_mask.append(new_attention_mask)
+            expanded_token_type_ids.append(new_token_type_ids)
+            expanded_is_mol_token.append(new_is_mol_token)
+
+        max_length = max(tensor.size(0) for tensor in expanded_input_ids)
+        padded_input_ids = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=1) for tensor in expanded_input_ids
+        ]
+        padded_attention_mask = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_attention_mask
+        ]
+        padded_token_type_ids = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_token_type_ids
+        ]
+        padded_is_mol_token = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_is_mol_token
+        ]
+
+        prompt_tokens.input_ids = torch.stack(padded_input_ids)
+        prompt_tokens.attention_mask = torch.stack(padded_attention_mask)
+        prompt_tokens.token_type_ids = torch.stack(padded_token_type_ids)
+        prompt_tokens.is_mol_token = torch.stack(padded_is_mol_token).bool()
+        
+        prompt_tokens['input_ids'] = torch.stack(padded_input_ids)
+        prompt_tokens['attention_mask'] = torch.stack(padded_attention_mask)
+        prompt_tokens['token_type_ids'] = torch.stack(padded_token_type_ids)
+        prompt_tokens['is_mol_token'] = torch.stack(padded_is_mol_token)
+
+        return prompt_tokens
+
+    def count_false_sequences(self, bool_tensor):
+        # Convert to integers (False -> 0, True -> 1)
+        int_tensor = bool_tensor.to(dtype=torch.int)
+        
+        # Compute the difference between consecutive elements
+        diff = torch.diff(int_tensor, prepend=torch.tensor([1]))
+        
+        # Identify the start and end of False sequences
+        false_starts = (diff == -1).nonzero(as_tuple=True)[0]
+        false_ends = (diff == 1).nonzero(as_tuple=True)[0]
+        
+        # If the tensor ends with False, append the last index + 1 to false_ends
+        if len(false_ends) == 0 or false_starts[-1] > false_ends[-1]:
+            false_ends = torch.cat([false_ends, torch.tensor([len(bool_tensor)])])
+        
+        # Calculate lengths of each False sequence
+        false_lengths = (false_ends - false_starts).tolist()
+        
+        return false_lengths
 
     def compute_avg_cosine_similarity(self, X):
         # X has shape (batch_size, num_query, feature_dim)

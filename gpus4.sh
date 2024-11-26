@@ -18,5 +18,9 @@
 
 
 # Original training, with USPTO forward/retro
-python stage2.py --root "data/USPTO_retrosynthesis/USPTO_50K_data/" --devices "0,1,2,3,4,5,6,7" --filename "ft_USPTO_retrosynthesis_from_origin" --stage2_path "all_checkpoints/stage2_origin/last.ckpt" --max_epochs 100 --mode "ft" --tune_gnn --llm_tune "lora" --inference_batch_size 4 --peft_config "lora_config.json" --max_len 600 --batch_size 4 --accumulate_grad_batches 8 --caption_eval_epoch 10
+# python stage2.py --root "data/USPTO_retrosynthesis/USPTO_50K_data/" --devices "0,1,2,3,4,5,6,7" --filename "ft_USPTO_retrosynthesis_from_origin" --stage2_path "all_checkpoints/stage2_origin/last.ckpt" --max_epochs 100 --mode "ft" --tune_gnn --llm_tune "lora" --inference_batch_size 4 --peft_config "lora_config.json" --max_len 600 --batch_size 4 --accumulate_grad_batches 8 --caption_eval_epoch 10
 python stage2.py --root "data/USPTO_forward/USPTO_50K_data/" --devices "0,1,2,3,4,5,6,7" --filename "ft_USPTO_forward_from_origin" --stage2_path "all_checkpoints/stage2_origin/last.ckpt" --max_epochs 100 --mode "ft" --tune_gnn --llm_tune "lora" --inference_batch_size 4 --peft_config "lora_config.json" --max_len 600 --batch_size 4 --accumulate_grad_batches 8 --caption_eval_epoch 10
+
+# String only training, with USPTO forward/retro
+# python stage2.py --opt_model only --root "data/USPTO_retrosynthesis/USPTO_50K_data/" --devices "0,1,2,3,4,5,6,7" --filename "ft_USPTO_retrosynthesis_stringonly" --max_epochs 100 --mode "ft" --tune_gnn --llm_tune "lora" --inference_batch_size 4 --peft_config "lora_config.json" --max_len 600 --batch_size 4 --accumulate_grad_batches 8 --caption_eval_epoch 10
+# python stage2.py --opt_model only --root "data/USPTO_forward/USPTO_50K_data/" --devices "0,1,2,3,4,5,6,7" --filename "ft_USPTO_forward_stringonly" --max_epochs 100 --mode "ft" --tune_gnn --llm_tune "lora" --inference_batch_size 4 --peft_config "lora_config.json" --max_len 600 --batch_size 4 --accumulate_grad_batches 8 --caption_eval_epoch 10
