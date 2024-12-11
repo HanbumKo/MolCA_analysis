@@ -9,7 +9,7 @@ import shutil
 # ("ft_retrosynthesis_from_nostage2", "num_t1_exact_match_val"),
 
 
-file_name = "ft_USPTO_retrosynthesis_stringonly"
+file_name = "ftstm_retrosynthesis_from_noft"
 
 if "_property_" in file_name:
     metric_name = "mae_val"

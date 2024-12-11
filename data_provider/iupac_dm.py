@@ -11,6 +11,8 @@ from data_provider.molecule_iupac_dataset import IUPACDataset
 import re
 from ogb.utils import smiles2graph
 from rdkit import RDLogger
+from tqdm import tqdm
+from copy import deepcopy
 import pandas as pd
 
 # we split individual characters inside special tokens like [START_DNA]
@@ -169,7 +171,7 @@ class IUPACHardDataset(Dataset):
         self.iupac_list = []
 
         data = pd.read_csv(self.path)
-        for _, row in data.iterrows():
+        for _, row in tqdm(data.iterrows(), total=len(data)):
             smiles = row['SMILES']
             iupac_name = row['IUPACName']
             self.smiles_list.append(smiles)
@@ -211,44 +213,67 @@ class IupacDM(LightningDataModule):
         self.prompt = args.prompt
         self.graph_only = args.graph_only
         
-        self.train_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
-        self.val_dataset = IUPACDataset(root+'valid.pt', text_max_len, self.prompt)
-        self.test_dataset = IUPACDataset(root+'test.pt', text_max_len, self.prompt)
+        # self.train_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
+        # self.val_dataset = IUPACDataset(root+'valid.pt', text_max_len, self.prompt)
+        # self.test_dataset = IUPACDataset(root+'test.pt', text_max_len, self.prompt)
 
-        # if args.use_hards[0]:
-        #     self.train_dataset = IUPACHardDataset(root+f'train_iupac_hard.csv', text_max_len, self.prompt)
-        # else:
-        #     self.train_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
-        # if args.use_hards[1]:
-        #     self.val_dataset = IUPACHardDataset(root+f'validation_iupac_hard.csv', text_max_len, self.prompt)
-        # else:
-        #     self.val_dataset = IUPACDataset(root+'valid.pt', text_max_len, self.prompt)
-        # if args.use_hards[2]:
-        #     self.test_dataset = IUPACHardDataset(root+f'test_iupac_hard.csv', text_max_len, self.prompt)
-        # else:
-        #     self.test_dataset = IUPACDataset(root+'test.pt', text_max_len, self.prompt)
-
-        # For test subset of train dataset
-        self.train_subset_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
         size = 1000
-        data = self.train_subset_dataset.data
-        slices = self.train_subset_dataset.slices
-        data['x'] = data['x'][:slices['x'][size], :]
-        data['edge_index'] = data['edge_index'][:, :slices['edge_index'][size]]
-        data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][size], :]
-        data['text'] = data['text'][:slices['text'][size]]
-        data['smiles'] = data['smiles'][:slices['smiles'][size]]
-        data['cid'] = data['cid'][:slices['cid'][size]]
-        data['iupac'] = data['iupac'][:slices['iupac'][size]]
-        slices['x'] = slices['x'][:size+1]
-        slices['edge_index'] = slices['edge_index'][:size+1]
-        slices['edge_attr'] = slices['edge_attr'][:size+1]
-        slices['text'] = slices['text'][:size+1]
-        slices['smiles'] = slices['smiles'][:size+1]
-        slices['cid'] = slices['cid'][:size+1]
-        slices['iupac'] = slices['iupac'][:size+1]
-        self.train_subset_dataset.data = data
-        self.train_subset_dataset.slices = slices
+        if args.use_hards[0]:
+            self.train_dataset = IUPACHardDataset(root+f'train_iupac_hard.csv', text_max_len, self.prompt)
+            self.train_subset_dataset = IUPACHardDataset(root+f'test_iupac_hard.csv', text_max_len, self.prompt)
+            self.train_subset_dataset.smiles_list = deepcopy(self.train_dataset.smiles_list[:1000])
+            self.train_subset_dataset.iupac_list = deepcopy(self.train_dataset.iupac_list[:1000])
+        else:
+            self.train_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
+            self.train_subset_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
+            data = self.train_subset_dataset.data
+            slices = self.train_subset_dataset.slices
+            data['x'] = data['x'][:slices['x'][size], :]
+            data['edge_index'] = data['edge_index'][:, :slices['edge_index'][size]]
+            data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][size], :]
+            data['text'] = data['text'][:slices['text'][size]]
+            data['smiles'] = data['smiles'][:slices['smiles'][size]]
+            data['cid'] = data['cid'][:slices['cid'][size]]
+            data['iupac'] = data['iupac'][:slices['iupac'][size]]
+            slices['x'] = slices['x'][:size+1]
+            slices['edge_index'] = slices['edge_index'][:size+1]
+            slices['edge_attr'] = slices['edge_attr'][:size+1]
+            slices['text'] = slices['text'][:size+1]
+            slices['smiles'] = slices['smiles'][:size+1]
+            slices['cid'] = slices['cid'][:size+1]
+            slices['iupac'] = slices['iupac'][:size+1]
+            self.train_subset_dataset.data = data
+            self.train_subset_dataset.slices = slices
+        if args.use_hards[1]:
+            self.val_dataset = IUPACHardDataset(root+f'validation_iupac_hard.csv', text_max_len, self.prompt)
+        else:
+            self.val_dataset = IUPACDataset(root+'valid.pt', text_max_len, self.prompt)
+        if args.use_hards[2]:
+            self.test_dataset = IUPACHardDataset(root+f'test_iupac_hard.csv', text_max_len, self.prompt)
+        else:
+            self.test_dataset = IUPACDataset(root+'test.pt', text_max_len, self.prompt)
+
+        # # For test subset of train dataset
+        # self.train_subset_dataset = IUPACDataset(root+'train.pt', text_max_len, self.prompt)
+        # size = 1000
+        # data = self.train_subset_dataset.data
+        # slices = self.train_subset_dataset.slices
+        # data['x'] = data['x'][:slices['x'][size], :]
+        # data['edge_index'] = data['edge_index'][:, :slices['edge_index'][size]]
+        # data['edge_attr'] = data['edge_attr'][:slices['edge_attr'][size], :]
+        # data['text'] = data['text'][:slices['text'][size]]
+        # data['smiles'] = data['smiles'][:slices['smiles'][size]]
+        # data['cid'] = data['cid'][:slices['cid'][size]]
+        # data['iupac'] = data['iupac'][:slices['iupac'][size]]
+        # slices['x'] = slices['x'][:size+1]
+        # slices['edge_index'] = slices['edge_index'][:size+1]
+        # slices['edge_attr'] = slices['edge_attr'][:size+1]
+        # slices['text'] = slices['text'][:size+1]
+        # slices['smiles'] = slices['smiles'][:size+1]
+        # slices['cid'] = slices['cid'][:size+1]
+        # slices['iupac'] = slices['iupac'][:size+1]
+        # self.train_subset_dataset.data = data
+        # self.train_subset_dataset.slices = slices
         
         # data = self.train_dataset.data
         # slices = self.train_dataset.slices

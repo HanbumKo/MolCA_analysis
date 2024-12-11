@@ -17,6 +17,7 @@ from lavis.models.base_model import BaseModel
 from lavis.models.blip2_models.Qformer import BertConfig, BertLMHeadModel
 from transformers import BertTokenizer
 from model.gin_model import GNN
+from model.molecule_stm_model import GNNSTM, GNNSTM_graphpred
 
 
     
@@ -70,21 +71,48 @@ class Blip2Base(BaseModel):
 
     @classmethod
     def init_graph_encoder(
-        cls, gin_num_layers, gin_hidden_dim, gin_drop_ratio):
-        graph_encoder = GNN(
-            num_layer=gin_num_layers,
-            emb_dim=gin_hidden_dim,
-            gnn_type='gin',
-            drop_ratio=gin_drop_ratio,
-            JK='last',
-        )
-        ckpt = torch.load('gin_pretrained/graphcl_80.pth', map_location=torch.device('cpu'))
-        missing_keys, unexpected_keys = graph_encoder.load_state_dict(ckpt, strict=False)
-        if len(missing_keys) or len(unexpected_keys):
-            print(missing_keys)
-            print(unexpected_keys)
-        
-        ln_graph = LayerNorm(graph_encoder.num_features)
+        cls, gin_num_layers, gin_hidden_dim, gin_drop_ratio, gnn_type):
+        if gnn_type == 'gin':
+            graph_encoder = GNN(
+                num_layer=gin_num_layers,
+                emb_dim=gin_hidden_dim,
+                gnn_type='gin',
+                drop_ratio=gin_drop_ratio,
+                JK='last',
+            )
+            ckpt = torch.load('gin_pretrained/graphcl_80.pth', map_location=torch.device('cpu'))
+            missing_keys, unexpected_keys = graph_encoder.load_state_dict(ckpt, strict=False)
+            if len(missing_keys) or len(unexpected_keys):
+                print(missing_keys)
+                print(unexpected_keys)
+            
+            ln_graph = LayerNorm(graph_encoder.num_features)
+        elif gnn_type == 'dnd':
+            raise NotImplementedError
+        elif gnn_type == 'stm':
+            molecule_node_model = GNNSTM(
+                num_layer=5, emb_dim=300,
+                JK='last', drop_ratio=0.5,
+                gnn_type='gin')
+            molecule_model = GNNSTM_graphpred(
+                num_layer=5, emb_dim=300, JK='last', graph_pooling='mean',
+                num_tasks=1, molecule_node_model=molecule_node_model) 
+            molecule_dim = 300
+            input_model_path = "molecule_stm_pretrained/molecule_model.pth"
+            print("Loading from {}...".format(input_model_path))
+            state_dict = torch.load(input_model_path, map_location='cpu')
+            molecule_model.load_state_dict(state_dict)
+            
+            mol2latent = nn.Linear(molecule_dim, 256)
+            input_model_path = "molecule_stm_pretrained/mol2latent_model.pth"
+            print("Loading from {}...".format(input_model_path))
+            state_dict = torch.load(input_model_path, map_location='cpu')
+            mol2latent.load_state_dict(state_dict)
+
+            graph_encoder = molecule_model
+            ln_graph = LayerNorm(molecule_dim)
+        else:
+            raise NotImplementedError
             
         return graph_encoder, ln_graph
 

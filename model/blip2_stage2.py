@@ -446,6 +446,7 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--gin_num_layers', type=int, default=5)
         parser.add_argument('--drop_ratio', type=float, default=0.0)
         parser.add_argument('--tune_gnn', action='store_true', default=False)
+        parser.add_argument('--gnn_type', type=str, default='gin', choices=['gin', 'dnd', 'stm'])
         parser.add_argument('--projector', type=str, default='qformer', help='type of projector', choices=['qformer', 'mlp'])
         # Bert
         parser.add_argument('--bert_hidden_dim', type=int, default=768, help='')

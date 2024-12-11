@@ -7,7 +7,7 @@ import torch_geometric
 # from torch_geometric.loader import DataLoader
 from torch.utils.data import DataLoader
 from torch_geometric.loader.dataloader import Collater
-from data_provider.molecule_caption_dataset import MoleculeCaption, MoleculeCaptionV2
+from data_provider.molecule_caption_dataset import MoleculeCaption, MoleculeCaptionV2, MolCapExtended
 import re
 
 # we split individual characters inside special tokens like [START_DNA]
@@ -169,11 +169,13 @@ class Stage2DM(LightningDataModule):
         self.text_max_len = text_max_len
         self.prompt = args.prompt
         self.graph_only = args.graph_only
-        if False:
-            self.pretrain_dataset = MoleculeCaption(root+f'/pretrain/', text_max_len, self.prompt, args.filtered_cid_path)
-            self.train_dataset = MoleculeCaption(root+f'/train/', text_max_len, self.prompt)
-            self.val_dataset = MoleculeCaption(root + '/valid/', text_max_len, self.prompt)
-            self.test_dataset = MoleculeCaption(root + '/test/', text_max_len, self.prompt)
+
+        if "PubChem324kV2_Extended" in root:
+            self.pretrain_dataset = MolCapExtended(root+f'pretrain.csv', text_max_len, self.prompt)
+            self.train_dataset = MolCapExtended(root+f'train.csv', text_max_len, self.prompt)
+            self.val_dataset = MolCapExtended(root + f'valid.csv', text_max_len, self.prompt)
+            self.test_dataset = MolCapExtended(root + f'test.csv', text_max_len, self.prompt)
+            self.train_subset_dataset = MolCapExtended(root+f'train.csv', text_max_len, self.prompt)
         else:
             self.pretrain_dataset = MoleculeCaptionV2(root+f'pretrain.pt', text_max_len, self.prompt)
             self.train_dataset = MoleculeCaptionV2(root+f'train.pt', text_max_len, self.prompt)
@@ -314,6 +316,9 @@ class Stage2DM(LightningDataModule):
         parser.add_argument('--prompt', type=str, default='The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. ')
         parser.add_argument('--filtered_cid_path', type=str, default=None)
         parser.add_argument('--graph_only', action='store_true', default=False)
-        # parser.add_argument('--use_hards', nargs='+', default="False False False", type=str2bool, help='use hard dataset, [train - True/False, val - True/False, test - True/False]. Example: --use_hards False False False')
+        default_values = ["False", "False", "False"]
+        default_bools = [str2bool(val) for val in default_values]
+        parser.add_argument('--use_hards', nargs='+', default=default_bools, type=str2bool, help='use hard dataset, [train - True/False, val - True/False, test - True/False]. Example: --use_hards False False False')
+    
         return parent_parser
     
