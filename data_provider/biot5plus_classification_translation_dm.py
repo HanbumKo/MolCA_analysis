@@ -81,7 +81,7 @@ class TrainCollater:
         self.is_gal = is_gal
         
     def __call__(self, batch):
-        graphs, texts, smiles_prompt = zip(*batch)
+        graphs, texts, smiles_prompt, tasks = zip(*batch)
         # graphs = self.collater(graphs)
         
         ## deal with prompt
@@ -113,7 +113,7 @@ class TrainCollater:
                                      max_length=self.text_max_len,
                                      return_tensors='pt',
                                      return_attention_mask=True)
-        return graphs, smiles_prompt_tokens, text_tokens
+        return graphs, smiles_prompt_tokens, text_tokens, tasks
     
 
 class InferenceCollater:
@@ -126,7 +126,7 @@ class InferenceCollater:
         self.is_gal = is_gal
         
     def __call__(self, batch):
-        graphs, texts, smiles_prompt = zip(*batch)
+        graphs, texts, smiles_prompt, tasks = zip(*batch)
         graphs = self.collater(graphs)
         smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal)[0] for p in smiles_prompt]
         ## deal with prompt
@@ -140,7 +140,7 @@ class InferenceCollater:
 
         is_mol_token = smiles_prompt_tokens.input_ids == self.mol_token_id
         smiles_prompt_tokens['is_mol_token'] = is_mol_token
-        return graphs, smiles_prompt_tokens, texts
+        return graphs, smiles_prompt_tokens, texts, tasks
 
 
 def smiles2data(smiles):
@@ -171,7 +171,8 @@ class BioT5PlusClassificationTranslationDM(LightningDataModule):
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
-        self.train_dataset = ClassificationTranslationDataset('train')
+        # self.train_dataset = ClassificationTranslationDataset('train')
+        self.train_dataset = ClassificationTranslationDataset('test')
         self.val_dataset = ClassificationTranslationDataset('test')
         self.test_dataset = ClassificationTranslationDataset('test')
 

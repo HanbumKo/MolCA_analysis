@@ -150,7 +150,7 @@ class ClassificationTranslationDataset(InMemoryDataset):
                     d["output"] = d["output"][0]
                     self.dataset.append(d)
 
-        self.smiles_max_length = 128
+        self.smiles_max_length = 256
         # Load data pt file
         self.prompt = ""
         self.perm = None
@@ -299,7 +299,7 @@ class ClassificationTranslationDataset(InMemoryDataset):
         # all_processed_label_smiles = [f"[START_I_SMILES]{label_s}[END_I_SMILES]" for label_s in all_processed_label_smiles]
         # label_text = ".".join(all_processed_label_smiles)
 
-        return graph_list, f"{label_prompt}\n", input_prompt
+        return graph_list, f"{label_prompt}\n", input_prompt, task
 
 
 if __name__ == '__main__':

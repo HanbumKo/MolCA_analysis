@@ -11,8 +11,9 @@ from lavis.common.optims import LinearWarmupCosineLRScheduler, LinearWarmupStepL
 import json
 import torch.distributed as dist
 from peft import LoraConfig, TaskType
-from model.help_funcs import caption_evaluate, regression_evaluate, calculate_smiles_metrics, AttrDict
+from model.help_funcs import caption_evaluate, regression_evaluate, calculate_smiles_metrics, classification_evaluate, AttrDict
 from transformers import Adafactor
+from collections import defaultdict
 
 
 def load_ignore_unexpected(model, state_dict):
@@ -165,17 +166,14 @@ class Blip2Stage2(pl.LightningModule):
                 self.log("rouge_l", rouge_l, sync_dist=True)
                 self.log("meteor_score", meteor_score, sync_dist=True)
 
-    def save_predictions(self, predictions, targets, filename='predictions.txt'):
-        assert len(predictions) == len(targets)
+    def save_predictions(self, all_predictions_dict, filename='predictions.json'):
+        # assert len(predictions) == len(targets)
         with open(os.path.join(self.logger.log_dir, filename), 'w', encoding='utf8') as f:
-            for p, t in zip(predictions, targets):
-                t = t.replace("SPL1T-TH1S-Pl3A5E", "").replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "")
-                line = {'prediction': p, 'target': t}
-                f.write(json.dumps(line, ensure_ascii=True) + '\n')
+            json.dump(all_predictions_dict, f, indent=4, ensure_ascii=False)
 
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
-        graphs, prompt_tokens, texts = batch
+        graphs, prompt_tokens, texts, tasks = batch
         ###============== Captioning Results ===================###
         samples = {'graphs': graphs, 'prompt_tokens': prompt_tokens}
         predictions = self.blip2opt.generate(
@@ -190,7 +188,7 @@ class Blip2Stage2(pl.LightningModule):
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx):
         if dataloader_idx == 0:
-            _, prompt_tokens, text_tokens = batch
+            _, prompt_tokens, text_tokens, tasks = batch
             batch_size = prompt_tokens.input_ids.shape[0]
             loss = self.blip2opt(batch)
             # att_cos = loss['att_cos']
@@ -209,7 +207,7 @@ class Blip2Stage2(pl.LightningModule):
         elif dataloader_idx == 1:
             if (self.current_epoch+1) % self.caption_eval_epoch != 0:
                 return 
-            graphs, prompt_tokens, texts = batch
+            graphs, prompt_tokens, texts, tasks = batch
             ###============== Captioning Results ===================###
             samples = {'graphs': graphs, 'prompt_tokens': prompt_tokens}
             predictions = self.blip2opt.generate(
@@ -221,6 +219,7 @@ class Blip2Stage2(pl.LightningModule):
             )
             self.list_predictions.append(predictions)
             self.list_targets.append(texts)
+            self.list_tasks.append(tasks)
         # elif dataloader_idx == 2:
         #     reaction_tokens, _, _ = batch
         #     batch_size = reaction_tokens.input_ids.shape[0]
@@ -264,10 +263,13 @@ class Blip2Stage2(pl.LightningModule):
     def on_validation_epoch_start(self) -> None:
         self.list_predictions = []
         self.list_targets = []
+        self.list_tasks = []
         self.list_predictions_train = []
         self.list_targets_train = []
+        self.list_tasks_train = []
         self.list_predictions_val = []
         self.list_targets_val = []
+        self.list_tasks_val = []
     
     def on_validation_epoch_end(self) -> None:
     # def validation_epoch_end(self, outputs):
@@ -277,37 +279,119 @@ class Blip2Stage2(pl.LightningModule):
         # list_predictions, list_targets = zip(*caption_outputs)
         predictions = [i for ii in self.list_predictions for i in ii]
         targets = [i for ii in self.list_targets for i in ii]
+        tasks = [i for ii in self.list_tasks for i in ii]
         predictions_train = [i for ii in self.list_predictions_train for i in ii]
         targets_train = [i for ii in self.list_targets_train for i in ii]
+        tasks_train = [i for ii in self.list_tasks_train for i in ii]
         predictions_val = [i for ii in self.list_predictions_val for i in ii]
         targets_val = [i for ii in self.list_targets_val for i in ii]
+        tasks_val = [i for ii in self.list_tasks_val for i in ii]
 
         all_predictions = [None for _ in range(self.trainer.world_size)]
         all_targets = [None for _ in range(self.trainer.world_size)]
+        all_tasks = [None for _ in range(self.trainer.world_size)]
         all_predictions_train = [None for _ in range(self.trainer.world_size)]
         all_targets_train = [None for _ in range(self.trainer.world_size)]
+        all_tasks_train = [None for _ in range(self.trainer.world_size)]
         all_predictions_val = [None for _ in range(self.trainer.world_size)]
         all_targets_val = [None for _ in range(self.trainer.world_size)]
+        all_tasks_val = [None for _ in range(self.trainer.world_size)]
         try:
             dist.all_gather_object(all_predictions, predictions)
             dist.all_gather_object(all_targets, targets)
+            dist.all_gather_object(all_tasks, tasks)
             dist.all_gather_object(all_predictions_train, predictions_train)
             dist.all_gather_object(all_targets_train, targets_train)
+            dist.all_gather_object(all_tasks_train, tasks_train)
             dist.all_gather_object(all_predictions_val, predictions_val)
             dist.all_gather_object(all_targets_val, targets_val)
+            dist.all_gather_object(all_tasks_val, tasks_val)
         # except RuntimeError:
         except:
             all_predictions = [predictions]
             all_targets = [targets]
+            all_tasks = [tasks]
             all_predictions_train = [predictions_train]
             all_targets_train = [targets_train]
+            all_tasks_train = [tasks_train]
             all_predictions_val = [predictions_val]
             all_targets_val = [targets_val]
+            all_tasks_val = [tasks_val]
         if self.global_rank == 0:
             all_predictions = [i for ii in all_predictions for i in ii]
             all_targets = [i for ii in all_targets for i in ii]
+            all_tasks = [i for ii in all_tasks for i in ii]
+            task_names = list(set(all_tasks))
+            all_predictions_dict = defaultdict(list)
+            for p, t, task in zip(all_predictions, all_targets, all_tasks):
+                all_predictions_dict[task].append(
+                    {'prediction': p, 'target': t.replace("SPL1T-TH1S-Pl3A5E", "").replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "")}
+                )
+
             if len(all_predictions) > 0:
-                self.save_predictions(all_predictions, all_targets, filename=f'predictions_epoch{self.current_epoch}_test.txt')
+                self.save_predictions(all_predictions_dict, filename=f'predictions_epoch{self.current_epoch}_test.json')
+                for task, p_t in all_predictions_dict.items():
+                    if task == "chebi20_text2mol":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
+                        for key, value in result_dict.items():
+                            self.log(key+"_chebi20_text2mol_test", value, sync_dist=False)
+                    elif task == "chebi20_mol2text":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                            caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
+                        self.log("bleu2_chebi20_mol2text_test", bleu2, sync_dist=False)
+                        self.log("bleu4_chebi20_mol2text_test", bleu4, sync_dist=False)
+                        self.log("rouge_1_chebi20_mol2text_test", rouge_1, sync_dist=False)
+                        self.log("rouge_2_chebi20_mol2text_test", rouge_2, sync_dist=False)
+                        self.log("rouge_l_chebi20_mol2text_test", rouge_l, sync_dist=False)
+                        self.log("meteor_score_chebi20_mol2text_test", meteor_score, sync_dist=False)
+                    elif task == "bbbp":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = classification_evaluate(predictions, targets)
+                        for key, value in result_dict.items():
+                            self.log(key+"_bbbp_test", value, sync_dist=False)
+                    elif task == "hiv":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = classification_evaluate(predictions, targets)
+                        for key, value in result_dict.items():
+                            self.log(key+"_hiv_test", value, sync_dist=False)
+                    elif task == "bace":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = classification_evaluate(predictions, targets)
+                        for key, value in result_dict.items():
+                            self.log(key+"_bace_test", value, sync_dist=False)
+                    elif task == "clintox":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = classification_evaluate(predictions, targets)
+                        for key, value in result_dict.items():
+                            self.log(key+"_clintox_test", value, sync_dist=False)
+                    elif task == "pubchem_mol2text":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                            caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
+                        self.log("bleu2_pubchem_mol2text_test", bleu2, sync_dist=False)
+                        self.log("bleu4_pubchem_mol2text_test", bleu4, sync_dist=False)
+                        self.log("rouge_1_pubchem_mol2text_test", rouge_1, sync_dist=False)
+                        self.log("rouge_2_pubchem_mol2text_test", rouge_2, sync_dist=False)
+                        self.log("rouge_l_pubchem_mol2text_test", rouge_l, sync_dist=False)
+                        self.log("meteor_score_pubchem_mol2text_test", meteor_score, sync_dist=False)
+                    elif task == "pubchem_text2mol":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
+                        for key, value in result_dict.items():
+                            self.log(key+"_pubchem_text2mol_test", value, sync_dist=False)
+                    else:
+                        raise NotImplementedError()
+            """
                 if self.is_regression:
                     mae, mse, rmse, validity = regression_evaluate(all_predictions, all_targets)
                     self.log("mae_test", mae, sync_dist=False)
@@ -336,9 +420,9 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("rouge_2_test", rouge_2, sync_dist=False)
                     self.log("rouge_l_test", rouge_l, sync_dist=False)
                     self.log("meteor_score_test", meteor_score, sync_dist=False)
-
             all_predictions_train = [i for ii in all_predictions_train for i in ii]
             all_targets_train = [i for ii in all_targets_train for i in ii]
+            all_tasks_train = [i for ii in all_tasks_train for i in ii]
             if len(all_predictions_train) > 0:
                 self.save_predictions(all_predictions_train, all_targets_train, filename=f'predictions_epoch{self.current_epoch}_train.txt')
                 if self.is_regression:
@@ -372,6 +456,7 @@ class Blip2Stage2(pl.LightningModule):
 
             all_predictions_val = [i for ii in all_predictions_val for i in ii]
             all_targets_val = [i for ii in all_targets_val for i in ii]
+            all_tasks_val = [i for ii in all_tasks_val for i in ii]
             if len(all_predictions_val) > 0:
                 self.save_predictions(all_predictions_val, all_targets_val, filename=f'predictions_epoch{self.current_epoch}_validation.txt')
                 if self.is_regression:
@@ -402,7 +487,7 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("rouge_2_val", rouge_2, sync_dist=False)
                     self.log("rouge_l_val", rouge_l, sync_dist=False)
                     self.log("meteor_score_val", meteor_score, sync_dist=False)
-
+            """
     def training_step(self, batch, batch_idx):
         if self.scheduler:
             self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)
@@ -420,7 +505,7 @@ class Blip2Stage2(pl.LightningModule):
             self.log("lr", self.trainer.optimizers[0].param_groups[0]['lr'], batch_size=batch_size, sync_dist=True)
             return molecule_loss + self.reaction_weight * reaction_loss
         else:
-            batch_size = batch[-1].input_ids.size(0)
+            batch_size = batch[-2].input_ids.size(0)
             ###============== Overall Loss ===================###
             loss = self.blip2opt(batch)
             # att_cos = loss['att_cos']
