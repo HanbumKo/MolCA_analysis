@@ -232,46 +232,51 @@ class Blip2OPT(Blip2Base):
 
     def forward(self, batch):
         graphs, prompt_tokens, text_tokens = batch
-        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
-            mol_tokens_list = self.forward_graph_list(graphs, prompt_tokens)
-            device = mol_tokens_list[0].device
-        elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
-            mol_tokens_list = self.forward_graph_list(graphs)
-            device = mol_tokens_list[0].device
+        if len(graphs) == 0:
+            device = prompt_tokens['input_ids'].device
         else:
-            graph_embeds, graph_masks = self.graph_encoder(graphs) # graph_masks: (batch_size, maximum_num_node)
-            if not self.tune_gnn:
-                graph_embeds = graph_embeds.detach()
-            graph_embeds = self.ln_graph(graph_embeds, graph_masks) # graph_embeds: (batch_size, maximum_num_node, 300)
-            device = graph_embeds.device
-            if self.args.projector == 'qformer':
-                query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
-                query_output = self.Qformer.bert(
-                    query_embeds=query_tokens,
-                    encoder_hidden_states=graph_embeds,
-                    encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
-                    return_dict=True,
-                    output_attentions=True,
-                )
-                if self.args.query_index != -1:
-                    num_query = query_output.last_hidden_state.size(1)
-                    assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
-                    new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-                    new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
-                    query_output.last_hidden_state = new_hidden_state
-                if self.args.shuffle_query: # Shuffle the query tokens between queries
-                    # query_output.last_hidden_state: (batch_size, num_query_token, D)
-                    print("shuffle query")
-                    query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
-                if self.args.zero_query:
-                    print("zero query")
-                    query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
-                mol_tokens = self.opt_proj(query_output.last_hidden_state)
-            elif self.args.projector == 'mlp':
-                query_output = self.projector(graph_embeds)
-                mol_tokens = self.opt_proj(query_output)
-                prompt_tokens = self.expand_prompt_token(prompt_tokens, graph_masks)
-            # mol_tokens = self.opt_proj(query_output.last_hidden_state)
+            mol_tokens_list = self.forward_graph_list(graphs, prompt_tokens)
+            device = prompt_tokens['input_ids'].device
+        # elif self.args.root.lower().find('forward') >= 0: # forward reaction prediction
+        #     mol_tokens_list = self.forward_graph_list(graphs, prompt_tokens)
+        #     device = mol_tokens_list[0].device
+        # elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
+        #     mol_tokens_list = self.forward_graph_list(graphs)
+        #     device = mol_tokens_list[0].device
+        # else:
+        #     graph_embeds, graph_masks = self.graph_encoder(graphs) # graph_masks: (batch_size, maximum_num_node)
+        #     if not self.tune_gnn:
+        #         graph_embeds = graph_embeds.detach()
+        #     graph_embeds = self.ln_graph(graph_embeds, graph_masks) # graph_embeds: (batch_size, maximum_num_node, 300)
+        #     device = graph_embeds.device
+        #     if self.args.projector == 'qformer':
+        #         query_tokens = self.query_tokens.expand(graph_embeds.shape[0], -1, -1)
+        #         query_output = self.Qformer.bert(
+        #             query_embeds=query_tokens,
+        #             encoder_hidden_states=graph_embeds,
+        #             encoder_attention_mask=graph_masks, # fixme: check whether this mask is correct
+        #             return_dict=True,
+        #             output_attentions=True,
+        #         )
+        #         if self.args.query_index != -1:
+        #             num_query = query_output.last_hidden_state.size(1)
+        #             assert self.args.query_index < num_query, f"query_index should be less than {num_query}"
+        #             new_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+        #             new_hidden_state[:, self.args.query_index, :] = query_output.last_hidden_state[:, self.args.query_index, :]
+        #             query_output.last_hidden_state = new_hidden_state
+        #         if self.args.shuffle_query: # Shuffle the query tokens between queries
+        #             # query_output.last_hidden_state: (batch_size, num_query_token, D)
+        #             print("shuffle query")
+        #             query_output.last_hidden_state = query_output.last_hidden_state[:, torch.randperm(query_output.last_hidden_state.size(1)), :]
+        #         if self.args.zero_query:
+        #             print("zero query")
+        #             query_output.last_hidden_state = torch.zeros_like(query_output.last_hidden_state)
+        #         mol_tokens = self.opt_proj(query_output.last_hidden_state)
+        #     elif self.args.projector == 'mlp':
+        #         query_output = self.projector(graph_embeds)
+        #         mol_tokens = self.opt_proj(query_output)
+        #         prompt_tokens = self.expand_prompt_token(prompt_tokens, graph_masks)
+        #     # mol_tokens = self.opt_proj(query_output.last_hidden_state)
         
         empty_targets = torch.ones(prompt_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
         targets = text_tokens.input_ids.masked_fill(
@@ -282,18 +287,26 @@ class Blip2OPT(Blip2Base):
         # (prompt_tokens.input_ids == 22).nonzero(as_tuple=True)[1]
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
-            for i, mol_tokens in enumerate(mol_tokens_list):
-                prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
-        elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
-            for i, mol_tokens in enumerate(mol_tokens_list):
-                prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
+        if len(graphs) == 0:
+            pass
         else:
-            if self.args.projector == 'qformer':
-                prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
-            elif self.args.projector == 'mlp':
-                for batch_idx in range(prompt_embeds.size(0)):
-                    prompt_embeds[batch_idx, prompt_tokens.is_mol_token[batch_idx]] = mol_tokens[batch_idx, graph_masks[batch_idx]].to(dtype=torch.bfloat16)
+            for i, mol_tokens in enumerate(mol_tokens_list):
+                if mol_tokens is None:
+                    continue
+                prompt_embeds[i][prompt_tokens.is_mol_token[i]] = mol_tokens.flatten(0, 1)
+                # prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
+        # elif self.args.root.lower().find('forward') >= 0: # forward reaction prediction
+        #     for i, mol_tokens in enumerate(mol_tokens_list):
+        #         prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
+        # elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
+        #     for i, mol_tokens in enumerate(mol_tokens_list):
+        #         prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
+        # else:
+        #     if self.args.projector == 'qformer':
+        #         prompt_embeds[prompt_tokens.is_mol_token] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
+        #     elif self.args.projector == 'mlp':
+        #         for batch_idx in range(prompt_embeds.size(0)):
+        #             prompt_embeds[batch_idx, prompt_tokens.is_mol_token[batch_idx]] = mol_tokens[batch_idx, graph_masks[batch_idx]].to(dtype=torch.bfloat16)
         inputs_embeds = self.opt_model.get_input_embeddings()(text_tokens.input_ids)
         inputs_embeds = torch.cat((prompt_embeds, inputs_embeds), dim=1)
         attention_mask = torch.cat([prompt_tokens.attention_mask, text_tokens.attention_mask], dim=1)
@@ -334,10 +347,15 @@ class Blip2OPT(Blip2Base):
             # "att_l2": att_l2.mean(),
         }
 
-    def forward_graph_list(self, graph_list, prompt_tokens=None):
+    def forward_graph_list(self, graph_list_all, prompt_tokens=None):
         mol_tokens_list = []
-        for i, graph in enumerate(graph_list):
-            graph_embeds, graph_masks = self.graph_encoder(graph)
+        for i, graph_list in enumerate(graph_list_all):
+            if len(graph_list) == 0:
+                # Append empty tensor
+                mol_tokens_list.append(None)
+                continue
+            graphs = self.collater(graph_list)
+            graph_embeds, graph_masks = self.graph_encoder(graphs)
             if not self.tune_gnn:
                 graph_embeds = graph_embeds.detach()
             graph_embeds = self.ln_graph(graph_embeds, graph_masks)

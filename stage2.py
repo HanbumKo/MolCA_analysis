@@ -14,6 +14,7 @@ from data_provider.property_prediction_dm import PropertyPredictionDM
 from data_provider.forward_reaction_prediction_dm import ForwardReactionPredictionDM, USPTOForwardReactionPredictionDM
 from data_provider.reagent_prediction_dm import ReagentPredictionDM
 from data_provider.retrosynthesis_dm import RetrosynthesisDM, USPTORetrosynthesisDM
+from data_provider.biot5plus_classification_translation_dm import BioT5PlusClassificationTranslationDM
 from model.blip2_stage2 import Blip2Stage2
 
 # torch.set_default_dtype(torch.float16)
@@ -66,7 +67,9 @@ def main(args):
         dm = IupacDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         monitor = "meteor_score_val"
     else:
-        if args.root == "data/USPTO_retrosynthesis/USPTO_50K_data/":
+        if args.root == "biot5plus_classification_translation":
+            dm = BioT5PlusClassificationTranslationDM(args.mode, args.num_workers, args.batch_size, args.text_max_len, tokenizer, args)
+        elif args.root == "data/USPTO_retrosynthesis/USPTO_50K_data/":
             dm = USPTORetrosynthesisDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
             monitor = "num_t1_exact_match_val"
         elif args.root == "data/USPTO_forward/USPTO_50K_data/":

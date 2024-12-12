@@ -190,8 +190,8 @@ class Blip2Stage2(pl.LightningModule):
     @torch.no_grad()
     def validation_step(self, batch, batch_idx, dataloader_idx):
         if dataloader_idx == 0:
-            _, _, text_tokens = batch
-            batch_size = text_tokens.input_ids.shape[0]
+            _, prompt_tokens, text_tokens = batch
+            batch_size = prompt_tokens.input_ids.shape[0]
             loss = self.blip2opt(batch)
             # att_cos = loss['att_cos']
             # att_kl = loss['att_kl']

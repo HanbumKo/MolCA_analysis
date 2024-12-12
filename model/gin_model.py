@@ -277,7 +277,8 @@ class GNN(torch.nn.Module):
         h_list = [x]
         for layer in range(self.num_layer):
             h = self.gnns[layer](h_list[layer], edge_index, edge_attr)
-            h = self.batch_norms[layer](h)
+            if x.size(0) > 1:
+                h = self.batch_norms[layer](h)
             #h = F.dropout(F.relu(h), self.drop_ratio, training = self.training)
             if layer == self.num_layer - 1:
                 #remove relu for the last layer
