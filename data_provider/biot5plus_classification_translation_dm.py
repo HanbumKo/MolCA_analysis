@@ -127,7 +127,7 @@ class InferenceCollater:
         
     def __call__(self, batch):
         graphs, texts, smiles_prompt, tasks = zip(*batch)
-        graphs = self.collater(graphs)
+        # graphs = self.collater(graphs)
         smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal)[0] for p in smiles_prompt]
         ## deal with prompt
         self.tokenizer.paddding_side = 'left'
@@ -171,10 +171,10 @@ class BioT5PlusClassificationTranslationDM(LightningDataModule):
         self.num_workers = num_workers
         self.text_max_len = text_max_len
         self.prompt = args.prompt
-        # self.train_dataset = ClassificationTranslationDataset('train')
-        self.train_dataset = ClassificationTranslationDataset('test')
-        self.val_dataset = ClassificationTranslationDataset('test')
-        self.test_dataset = ClassificationTranslationDataset('test')
+        self.train_dataset = ClassificationTranslationDataset('train', shuffle_inst=True)
+        # self.train_dataset = ClassificationTranslationDataset('test')
+        self.val_dataset = ClassificationTranslationDataset('test', shuffle_inst=False)
+        self.test_dataset = ClassificationTranslationDataset('test', shuffle_inst=False)
 
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token

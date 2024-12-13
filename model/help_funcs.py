@@ -14,9 +14,12 @@ import torch
 
 
 def classification_evaluate(predictions, references):
-    y_pred = predictions
-    y_true = [1 if ref == 'Yes.' else 0 for ref in references]
+    y_pred = [1 if "Yes" in prediction else 0 for prediction in predictions]
+    y_true = [1 if 'Yes' in ref else 0 for ref in references]
 
+    # if sum(y_true) == 0:
+    #     print("No positive samples in the ground truth.")
+    #     y_true[0] = 1
     auroc = metrics.roc_auc_score(y_true, y_pred)
     auprc = metrics.average_precision_score(y_true, y_pred)
 
@@ -25,7 +28,11 @@ def classification_evaluate(predictions, references):
     # different with DrugBAN (modified by qizhi)
     precision = tpr / (tpr + fpr + 0.00001)
     f1 = 2 * precision * tpr / (tpr + precision + 0.00001)
-    thred_optim = thresholds[5:][np.argmax(f1[5:])]
+    # thred_optim = thresholds[5:][np.argmax(f1[5:])]
+    if len(thresholds) > 5:
+        thred_optim = thresholds[5:][np.argmax(f1[5:])]
+    else:
+        thred_optim = thresholds[np.argmax(f1)]
     y_pred_s = [1 if i else 0 for i in (y_pred >= thred_optim)]
     cm1 = metrics.confusion_matrix(y_true, y_pred_s)
     accuracy = (cm1[0, 0] + cm1[1, 1]) / sum(sum(cm1))
@@ -38,13 +45,17 @@ def classification_evaluate(predictions, references):
     #     for gt, out in zip(y_true, y_pred):
     #         f.write(str(gt) + "\t" + str(out) + "\n")
 
+    if len(thresholds) > 5:
+        f1 = f1[5:]
+    else:
+        f1 = f1
     return {
         "accuracy": accuracy,
         "auroc": auroc,
         "auprc": auprc,
         "sensitivity": sensitivity,
         "specificity": specificity,
-        "f1": np.max(f1[5:]),
+        # "f1": f1,
         "thred_optim": thred_optim,
         "precision": precision1,
     }

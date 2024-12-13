@@ -26,11 +26,11 @@ def split_smiles_with_separator(smiles):
 
 
 class ClassificationTranslationDataset(InMemoryDataset):
-    def __init__(self, type, prompt=None):
+    def __init__(self, type, shuffle_inst=True, prompt=None):
         super(ClassificationTranslationDataset, self).__init__()
         files = [
-            (glob(f"data/biot5_plus_data/tasks_plus/*_chebi20_text2mol_{type}.json")[0], "chebi20_text2mol"),
-            (glob(f"data/biot5_plus_data/tasks_plus/*_chebi20_mol2text_{type}.json")[0], "chebi20_mol2text",) ,
+            # (glob(f"data/biot5_plus_data/tasks_plus/*_chebi20_text2mol_{type}.json")[0], "chebi20_text2mol"),
+            # (glob(f"data/biot5_plus_data/tasks_plus/*_chebi20_mol2text_{type}.json")[0], "chebi20_mol2text",) ,
             (glob(f"data/biot5_plus_data/tasks_plus/*_bbbp_molnet_{type}.json")[0] , "bbbp"),
             (glob(f"data/biot5_plus_data/tasks_plus/*_hiv_molnet_{type}.json")[0], "hiv"),
             (glob(f"data/biot5_plus_data/tasks_plus/*_bace_molnet_{type}.json")[0], "bace"),
@@ -143,15 +143,18 @@ class ClassificationTranslationDataset(InMemoryDataset):
         for file, task in tqdm(files, desc="Loading data", total=len(files)):
             with open(file, 'r') as f:
                 dataset_current = json.load(f)["Instances"]
-                for d in dataset_current:
+                for i, d in enumerate(dataset_current):
                     # Drop "id"
                     d.pop("id")
                     d["task"] = task
                     d["output"] = d["output"][0]
                     self.dataset.append(d)
+                    # if i == 50:
+                    #     break
 
         self.smiles_max_length = 256
         # Load data pt file
+        self.shuffle_inst = shuffle_inst
         self.prompt = ""
         self.perm = None
 
@@ -178,24 +181,27 @@ class ClassificationTranslationDataset(InMemoryDataset):
         task = data["task"]
         input = data["input"]
         output = data["output"]
+        if self.shuffle_inst:
+            # Randomly select an instruction
+            instruction = self.instructions[task][torch.randint(0, len(self.instructions[task]), (1,)).item()]
+        else:
+            instruction = self.instructions[task][index % len(self.instructions[task])]
 
         if task == "chebi20_text2mol":
             mol_desc = input
             # selfies = output.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = output.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            instruction = self.instructions[task][index % len(self.instructions[task])]
-            label_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]"
-            input_prompt = f"Question: {instruction}\n{mol_desc}\n\nAnswer: "
+            label_prompt = f"[START_I_SMILES]{isomeric_smiles}[END_I_SMILES]"
+            input_prompt = f"Question: {instruction}\n{mol_desc}\n\nAnswer: \n\n"
             graph_list = []
         elif task == "chebi20_mol2text":
             iupac = input.split("<boi>")[1].split("<eoi>")[0]
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            instruction = self.instructions[task][index % len(self.instructions[task])]
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -205,9 +211,8 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            instruction = self.instructions[task][index % len(self.instructions[task])]
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -217,9 +222,8 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            instruction = self.instructions[task][index % len(self.instructions[task])]
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -229,9 +233,8 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            instruction = self.instructions[task][index % len(self.instructions[task])]
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -241,9 +244,8 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            instruction = self.instructions[task][index % len(self.instructions[task])]
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -253,9 +255,8 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            instruction = self.instructions[task][index % len(self.instructions[task])]
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -265,39 +266,9 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = output.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = output.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            instruction = self.instructions[task][index % len(self.instructions[task])]
-            label_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]"
-            input_prompt = f"Question: {instruction}\n{mol_desc}\n\nAnswer: "
+            label_prompt = f"[START_I_SMILES]{isomeric_smiles}[END_I_SMILES]"
+            input_prompt = f"Question: {instruction}\n{mol_desc}\n\nAnswer: \n\n"
             graph_list = []
-
-
-        # left_smiles = [smiles for smiles in data['smiles'].split('>>')[0].split('.')]
-        # right_smiles = [smiles for smiles in data['smiles'].split('>>')[1].split('.')]
-        # all_smiles = left_smiles + right_smiles
-        # graph_list = []
-        # for batch_i, smiles in enumerate(all_smiles):
-        #     graph = smiles2data(smiles)
-        #     graph.instruction = data['instruction']
-        #     graph.smiles = smiles
-        #     graph.y = data['y']
-        #     graph_list.append(graph)
- 
-        # # all_smiles = [graph.smiles for graph in graph_list]
-        # # tagged_smiles = [f"[START_I_SMILES]{smile}[END_I_SMILES]" for smile in all_smiles]
-        # left_tagged_smiles = [f"[START_I_SMILES]{smile}[END_I_SMILES]" for smile in left_smiles]
-        # right_tagged_smiles = [f"[START_I_SMILES]{smile}[END_I_SMILES]" for smile in right_smiles]
-        # left_smiles_prompt = ".".join(left_tagged_smiles)
-        # right_smiles_prompt = ".".join(right_tagged_smiles)
-        # smiles_prompt = f"{left_smiles_prompt}>>{right_smiles_prompt}"
-        # smiles_prompt = f"{smiles_prompt}\n\nQuestion: {data['instruction']}\n\nAnswer: "
-        
-        # label_smiles = data['y'].split('.')
-        # all_processed_label_smiles = []
-        # for label_s in label_smiles:
-        #     label_s_text = split_smiles_with_separator(label_s)
-        #     all_processed_label_smiles.append(label_s_text)
-        # all_processed_label_smiles = [f"[START_I_SMILES]{label_s}[END_I_SMILES]" for label_s in all_processed_label_smiles]
-        # label_text = ".".join(all_processed_label_smiles)
 
         return graph_list, f"{label_prompt}\n", input_prompt, task
 
