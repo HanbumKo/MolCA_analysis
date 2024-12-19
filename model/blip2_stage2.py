@@ -389,6 +389,67 @@ class Blip2Stage2(pl.LightningModule):
                         result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
                         for key, value in result_dict.items():
                             self.log(key+"_pubchem_text2mol_test", value, sync_dist=False)
+                    elif task == "pretrain_captioning":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                            caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
+                        self.log("bleu2_chebi20_mol2text_test", bleu2, sync_dist=False)
+                        self.log("bleu4_chebi20_mol2text_test", bleu4, sync_dist=False)
+                        self.log("rouge_1_chebi20_mol2text_test", rouge_1, sync_dist=False)
+                        self.log("rouge_2_chebi20_mol2text_test", rouge_2, sync_dist=False)
+                        self.log("rouge_l_chebi20_mol2text_test", rouge_l, sync_dist=False)
+                        self.log("meteor_score_chebi20_mol2text_test", meteor_score, sync_dist=False)
+                    elif task == "molinst_property":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        mae, mse, rmse, validity = regression_evaluate(predictions, targets)
+                        self.log("mae_molinst_property_test", mae, sync_dist=False)
+                        self.log("mse_molinst_property_test", mse, sync_dist=False)
+                        self.log("rmse_molinst_property_test", rmse, sync_dist=False)
+                        self.log("validity_molinst_property_test", validity, sync_dist=False)
+                    elif task == "homo_reg":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        mae, mse, rmse, validity = regression_evaluate(predictions, targets)
+                        self.log("mae_homo_test", mae, sync_dist=False)
+                        self.log("mse_homo_test", mse, sync_dist=False)
+                        self.log("rmse_homo_test", rmse, sync_dist=False)
+                        self.log("validity_homo_test", validity, sync_dist=False)
+                    elif task == "lumo_reg":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        mae, mse, rmse, validity = regression_evaluate(predictions, targets)
+                        self.log("mae_lumo_test", mae, sync_dist=False)
+                        self.log("mse_lumo_test", mse, sync_dist=False)
+                        self.log("rmse_lumo_test", rmse, sync_dist=False)
+                        self.log("validity_lumo_test", validity, sync_dist=False)
+                    elif task == "gap_reg":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        mae, mse, rmse, validity = regression_evaluate(predictions, targets)
+                        self.log("mae_gap_test", mae, sync_dist=False)
+                        self.log("mse_gap_test", mse, sync_dist=False)
+                        self.log("rmse_gap_test", rmse, sync_dist=False)
+                        self.log("validity_gap_test", validity, sync_dist=False)
+                    elif task == "reagent":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                        for key, value in result_dict.items():
+                            self.log(key+"_forward_test", value, sync_dist=False)
+                    elif task == "forward":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
+                        for key, value in result_dict.items():
+                            self.log(key+"_forward_test", value, sync_dist=False)
+                    elif task == "retro":
+                        predictions = [i['prediction'] for i in p_t]
+                        targets = [i['target'] for i in p_t]
+                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                        for key, value in result_dict.items():
+                            self.log(key+"_retro_test", value, sync_dist=False)
                     else:
                         raise NotImplementedError()
             """
@@ -488,6 +549,7 @@ class Blip2Stage2(pl.LightningModule):
                     self.log("rouge_l_val", rouge_l, sync_dist=False)
                     self.log("meteor_score_val", meteor_score, sync_dist=False)
             """
+
     def training_step(self, batch, batch_idx):
         if self.scheduler:
             self.scheduler.step(self.trainer.current_epoch, self.trainer.global_step)

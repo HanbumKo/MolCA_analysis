@@ -81,7 +81,7 @@ class Blip2Base(BaseModel):
                 JK='last',
             )
             ckpt = torch.load('gin_pretrained/graphcl_80.pth', map_location=torch.device('cpu'))
-            missing_keys, unexpected_keys = graph_encoder.load_state_dict(ckpt, strict=False)
+            missing_keys, unexpected_keys = graph_encoder.load_state_dict(ckpt, strict=True)
             if len(missing_keys) or len(unexpected_keys):
                 print(missing_keys)
                 print(unexpected_keys)

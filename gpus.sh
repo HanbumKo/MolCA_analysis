@@ -204,4 +204,6 @@
 
 
 # BioT5 Data Training
-python stage2.py --root "biot5plus_classification_translation" --devices "0,1,2,3,4,5,6,7" --filename "biot5_clsf_trl" --max_epochs 40 --mode "ft" --tune_gnn --llm_tune "lora" --inference_batch_size 4 --peft_config "lora_config.json" --max_len 600 --batch_size 8 --accumulate_grad_batches 2 --caption_eval_epoch 10 --max_len 512
+# python stage2.py --root 'data/PubChem324kV2_Extended/' --devices "0" --filename "pretrain_iupac" --opt_model 'facebook/galactica-1.3b' --max_epochs 10 --mode pretrain --llm_tune lora --peft_config lora_config.json --inference_batch_size 4 --batch_size 12 --accumulate_grad_batches 1 --caption_eval_epoch 1 --text_max_len 512
+# python stage2.py --root "biot5plus_classification_translation" --init_checkpoint "all_checkpoints/pretrain_iupac/last.ckpt" --devices "0,1,2,3,4,5,6,7" --filename "biot5_clsf_trl" --max_epochs 100 --mode "ft" --llm_tune "lora" --inference_batch_size 4 --peft_config "lora_config.json" --batch_size 8 --accumulate_grad_batches 1 --caption_eval_epoch 10 --max_len 512
+python stage2.py --root "biot5plus_regression_reaction" --tune_gnn --devices "0,1,2,3,4,5,6,7" --filename "biot5_regre_react" --max_epochs 40 --mode "ft" --llm_tune "lora" --inference_batch_size 8 --peft_config "lora_config.json" --batch_size 32 --accumulate_grad_batches 1 --caption_eval_epoch 1 --max_len 128

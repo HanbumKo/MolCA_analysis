@@ -15,6 +15,7 @@ from data_provider.forward_reaction_prediction_dm import ForwardReactionPredicti
 from data_provider.reagent_prediction_dm import ReagentPredictionDM
 from data_provider.retrosynthesis_dm import RetrosynthesisDM, USPTORetrosynthesisDM
 from data_provider.biot5plus_classification_translation_dm import BioT5PlusClassificationTranslationDM
+from data_provider.biot5plus_regression_reaction_dm import BioT5PlusRegressionReactionDM
 from model.blip2_stage2 import Blip2Stage2
 
 # torch.set_default_dtype(torch.float16)
@@ -69,6 +70,8 @@ def main(args):
     else:
         if args.root == "biot5plus_classification_translation":
             dm = BioT5PlusClassificationTranslationDM(args.mode, args.num_workers, args.batch_size, args.text_max_len, tokenizer, args)
+        elif args.root == "biot5plus_regression_reaction":
+            dm = BioT5PlusRegressionReactionDM(args.mode, args.num_workers, args.batch_size, args.text_max_len, tokenizer, args)
         elif args.root == "data/USPTO_retrosynthesis/USPTO_50K_data/":
             dm = USPTORetrosynthesisDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
             monitor = "num_t1_exact_match_val"
@@ -101,8 +104,8 @@ def main(args):
                                         #  filename='best',
                                          filename='{epoch:02d}',
                                          every_n_epochs=args.caption_eval_epoch, 
-                                         save_last=True, 
-                                         save_top_k=-1,
+                                         save_last=False, 
+                                         save_top_k=0,
                                         #  monitor=monitor,
                                         #  monitor='val molecule loss/dataloader_idx_0',
                                          save_on_train_epoch_end=False))

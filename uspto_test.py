@@ -1,22 +1,22 @@
-import deepchem as dc
+from rdkit import Chem
+from rdkit.Chem import rdChemReactions
 
-# USPTO 데이터셋 로드
-tasks, datasets, transformers = dc.molnet.load_uspto(
-    featurizer='Raw',
-    split='scaffold',
-    data_dir='data/USPTO',
-    subset="50K",
-    reload=True
-)
+def read_rsmi_file(file_path):
+    with open(file_path, 'r') as file:
+        for line in file:
+            # Strip any leading/trailing whitespace characters
+            line = line.strip()
+            if line:
+                # Parse the reaction SMILES
+                try:
+                    reaction_smiles = line.split("\t")[0]
+                    reaction = rdChemReactions.ReactionFromSmarts(line)
+                    print("Reactants:", [Chem.MolToSmiles(reactant) for reactant in reaction.GetReactants()])
+                    print("Products:", [Chem.MolToSmiles(product) for product in reaction.GetProducts()])
+                except Exception as e:
+                    print(f"Error parsing line: {line}")
+                    print(e)
 
-# 데이터셋 언패킹
-train_dataset, valid_dataset, test_dataset = datasets
-
-train_raw = train_dataset.ids
-
-# 훈련 데이터 확인
-print("훈련 데이터 특징 행렬 크기:", train_dataset.X.shape)
-print("훈련 데이터 레이블 벡터 크기:", train_dataset.y.shape)
-
-# 변환기 확인
-print("적용된 변환기들:", transformers)
+# Example usage
+file_path = 'data/USPTO/1976_Sep2016_USPTOgrants_smiles.rsmi'
+read_rsmi_file(file_path)

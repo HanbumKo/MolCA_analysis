@@ -1,5 +1,6 @@
 import torch
 import os
+import random
 import pandas as pd
 import selfies as sf
 from glob import glob
@@ -157,11 +158,19 @@ class MolCapExtended(InMemoryDataset):
         df = pd.read_csv(path)
         self.data_list.extend(df.to_dict('records'))
         # print(f"Loaded {len(df)} records from {file_path}")
+        self.instructions = {
+            "pretrain_captioning": [
+                "Describe this molecule.",
+                "Provide a description of this molecule.",
+                "What can you tell me about this molecule?",
+                "Could you provide a description of this molecule?",
+                "Could you give me a brief overview of this molecule?",
+                "Provide a brief overview of this molecule.",
+                "Please give me some details about this molecule.",
+            ],
+        }
 
-        if not prompt:
-            self.prompt = 'The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. '
-        else:
-            self.prompt = prompt
+        self.smiles_max_len = 128
         self.perm = None
 
     def _selfies_to_smiles(self, selfies):
@@ -184,15 +193,18 @@ class MolCapExtended(InMemoryDataset):
 
     def __getitem__(self, index):
         data = self.data_list[index]
+        iupac = data['IUPACName']
         graph = smiles2data(data['SMILES'])
         graph.text = data['description']
         graph.smiles = data['SMILES']
-        if self.prompt.find('{}') >= 0:
-            smiles_prompt = self.prompt.format(graph.smiles[:128])
-        else:
-            smiles_prompt = self.prompt
+        task = "pretrain_captioning"
 
-        return graph, str(graph.text) + "\n", smiles_prompt # Need to clean up the text data
+        # instruction = self.instructions[task][torch.randint(0, len(self.instructions[task]), (1,)).item()]
+
+        input_prompt = f"[START_I_SMILES]{graph.smiles[:self.smiles_max_len]}[END_I_SMILES]"
+        label_prompt = f"\n\nThe molecule's IUPAC name is {iupac}.\n"
+
+        return [graph], label_prompt, input_prompt, task
 
 
 if __name__ == '__main__':

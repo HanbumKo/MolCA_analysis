@@ -20,6 +20,11 @@ def smiles2data(smiles):
     return data
 
 
+def enumerate_smiles(smiles):
+    mol = Chem.MolFromSmiles(smiles)
+    return Chem.MolToSmiles(mol, isomericSmiles=True, kekuleSmiles=True, doRandom=True)
+
+
 def split_smiles_with_separator(smiles):
     result = "SPL1T-TH1S-Pl3A5E".join(smiles)
     return result
@@ -30,12 +35,12 @@ class ClassificationTranslationDataset(InMemoryDataset):
         super(ClassificationTranslationDataset, self).__init__()
         files = [
             # (glob(f"data/biot5_plus_data/tasks_plus/*_chebi20_text2mol_{type}.json")[0], "chebi20_text2mol"),
-            # (glob(f"data/biot5_plus_data/tasks_plus/*_chebi20_mol2text_{type}.json")[0], "chebi20_mol2text",) ,
-            (glob(f"data/biot5_plus_data/tasks_plus/*_bbbp_molnet_{type}.json")[0] , "bbbp"),
-            (glob(f"data/biot5_plus_data/tasks_plus/*_hiv_molnet_{type}.json")[0], "hiv"),
-            (glob(f"data/biot5_plus_data/tasks_plus/*_bace_molnet_{type}.json")[0], "bace"),
-            (glob(f"data/biot5_plus_data/tasks_plus/*_clintox_fda_approved_molnet_{type}.json")[0], "clintox"),
-            (glob(f"data/biot5_plus_data/tasks_plus/*_clintox_ct_tox_molnet_{type}.json")[0], "clintox"),
+            (glob(f"data/biot5_plus_data/tasks_plus/*_chebi20_mol2text_{type}.json")[0], "chebi20_mol2text",) ,
+            # (glob(f"data/biot5_plus_data/tasks_plus/*_bbbp_molnet_{type}.json")[0] , "bbbp"),
+            # (glob(f"data/biot5_plus_data/tasks_plus/*_hiv_molnet_{type}.json")[0], "hiv"),
+            # (glob(f"data/biot5_plus_data/tasks_plus/*_bace_molnet_{type}.json")[0], "bace"),
+            # (glob(f"data/biot5_plus_data/tasks_plus/*_clintox_fda_approved_molnet_{type}.json")[0], "clintox"),
+            # (glob(f"data/biot5_plus_data/tasks_plus/*_clintox_ct_tox_molnet_{type}.json")[0], "clintox"),
             # (glob(f"data/biot5_plus_data/tasks_plus/*_molecular_description_generation_molinst_mol_{type}.json")[0], "pubchem_mol2text"),
             # (glob(f"data/biot5_plus_data/tasks_plus/*_description_guided_molecule_design_molinst_mol_{type}.json")[0], "pubchem_text2mol"),
         ]
@@ -60,6 +65,7 @@ class ClassificationTranslationDataset(InMemoryDataset):
                 "Please give me some details about this molecule.",
             ],
             "bbbp": [
+                # "Will the chemical compound penetrate the blood-brain barrier?",
                 "Can this molecule pass through the blood-brain barrier (BBB)?",
                 "Can this molecule permeate the blood-brain barrier?",
                 "Does this molecule have the blood-brain barrier permeability (BBBP)?",
@@ -151,7 +157,13 @@ class ClassificationTranslationDataset(InMemoryDataset):
                     self.dataset.append(d)
                     # if i == 50:
                     #     break
+        # if type == "train":
+        #     # append the training data to itself to increase the size of the training data
+        #     self.dataset += self.dataset
+        #     self.dataset += self.dataset
+        #     self.dataset += self.dataset
 
+        self.type = type
         self.smiles_max_length = 256
         # Load data pt file
         self.shuffle_inst = shuffle_inst
@@ -200,8 +212,11 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
+            # if self.type == "train":
+            #     isomeric_smiles = enumerate_smiles(isomeric_smiles)
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
+            # input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]."
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -211,8 +226,11 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
+            if self.type == "train":
+                isomeric_smiles = enumerate_smiles(isomeric_smiles)
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
+            # input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES] The molecule's IUPAC name is {iupac}.\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -222,8 +240,11 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
+            if self.type == "train":
+                isomeric_smiles = enumerate_smiles(isomeric_smiles)
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
+            # input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES] The molecule's IUPAC name is {iupac}.\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -233,8 +254,11 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
+            if self.type == "train":
+                isomeric_smiles = enumerate_smiles(isomeric_smiles)
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
+            # input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES] The molecule's IUPAC name is {iupac}.\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles
@@ -244,8 +268,11 @@ class ClassificationTranslationDataset(InMemoryDataset):
             # selfies = input.split("<bom>")[1].split("<eom>")[0]
             # isomeric_smiles = self._selfies_to_smiles(selfies)
             isomeric_smiles = input.split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
+            if self.type == "train":
+                isomeric_smiles = enumerate_smiles(isomeric_smiles)
             label_prompt = f"{output}"
-            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: \n\n"
+            # input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES] The molecule's IUPAC name is {iupac}.\n\nQuestion: {instruction}\n\nAnswer: "
+            input_prompt = f"[START_I_SMILES]{isomeric_smiles[:self.smiles_max_length]}[END_I_SMILES]\n\nQuestion: {instruction}\n\nAnswer: "
             graph = smiles2data(isomeric_smiles)
             graph.instruction = instruction
             graph.smiles = isomeric_smiles

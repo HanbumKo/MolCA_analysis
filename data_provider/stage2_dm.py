@@ -91,8 +91,8 @@ class TrainCollater:
         self.graph_only = graph_only
         
     def __call__(self, batch):
-        graphs, texts, smiles_prompt = zip(*batch)
-        graphs = self.collater(graphs)
+        graphs, texts, smiles_prompt, tasks = zip(*batch)
+        # graphs = self.collater(graphs)
         
         ## deal with prompt
         smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal, self.graph_only)[0] for p in smiles_prompt]
@@ -116,7 +116,7 @@ class TrainCollater:
                                      max_length=self.text_max_len,
                                      return_tensors='pt',
                                      return_attention_mask=True)
-        return graphs, smiles_prompt_tokens, text_tokens
+        return graphs, smiles_prompt_tokens, text_tokens, tasks
     
 
 class InferenceCollater:
@@ -130,8 +130,8 @@ class InferenceCollater:
         self.graph_only = graph_only
         
     def __call__(self, batch):
-        graphs, texts, smiles_prompt = zip(*batch)
-        graphs = self.collater(graphs)
+        graphs, texts, smiles_prompt, tasks = zip(*batch)
+        # graphs = self.collater(graphs)
         smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal, self.graph_only)[0] for p in smiles_prompt]
 
         ## deal with prompt
@@ -146,7 +146,7 @@ class InferenceCollater:
         
         is_mol_token = smiles_prompt_tokens.input_ids == self.mol_token_id
         smiles_prompt_tokens['is_mol_token'] = is_mol_token
-        return graphs, smiles_prompt_tokens, texts
+        return graphs, smiles_prompt_tokens, texts, tasks
     
 
 class Stage2DM(LightningDataModule):
@@ -172,6 +172,7 @@ class Stage2DM(LightningDataModule):
 
         if "PubChem324kV2_Extended" in root:
             self.pretrain_dataset = MolCapExtended(root+f'pretrain.csv', text_max_len, self.prompt)
+            # self.pretrain_dataset = MolCapExtended(root+f'test.csv', text_max_len, self.prompt)
             self.train_dataset = MolCapExtended(root+f'train.csv', text_max_len, self.prompt)
             self.val_dataset = MolCapExtended(root + f'valid.csv', text_max_len, self.prompt)
             self.test_dataset = MolCapExtended(root + f'test.csv', text_max_len, self.prompt)
@@ -289,8 +290,8 @@ class Stage2DM(LightningDataModule):
             persistent_workers=True,
             collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
-        return [val_loader, test_loader, train_subset_loader, val_loader_2]
-        # return [val_loader, test_loader]
+        # return [val_loader, test_loader, train_subset_loader, val_loader_2]
+        return [val_loader, test_loader]
     
     def test_dataloader(self):
         loader = DataLoader(

@@ -14,7 +14,7 @@ import torch
 
 
 def classification_evaluate(predictions, references):
-    y_pred = [1 if "Yes" in prediction else 0 for prediction in predictions]
+    y_pred = [1 if "Yes" in prediction[:3] else 0 for prediction in predictions]
     y_true = [1 if 'Yes' in ref else 0 for ref in references]
 
     # if sum(y_true) == 0:
@@ -431,6 +431,7 @@ def regression_evaluate(predictions, targets):
     for p, t in zip(predictions, targets):
         # Convert to float
         try:
+            p = p.split("\n")[0]
             p = float(p)
         except:
             validity.append(False)
@@ -444,6 +445,8 @@ def regression_evaluate(predictions, targets):
         targets_processed.append(t)
         validity.append(True)
     validity = np.array(validity)
+    if validity.sum() == 0:
+        return 0, 0, 0, 0
     validity = np.mean(validity)
     if validity == 0:
         return None, None, None, None
