@@ -231,7 +231,7 @@ class Blip2OPT(Blip2Base):
         # self.prompt_length = prompt_tokens.attention_mask.sum(1)
 
     def forward(self, batch):
-        graphs, prompt_tokens, text_tokens = batch
+        graphs, prompt_tokens, text_tokens, tasks = batch
         if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
             mol_tokens_list = self.forward_graph_list(graphs, prompt_tokens)
             device = mol_tokens_list[0].device

@@ -1,4 +1,5 @@
 import torch
+import random
 import os
 import pandas as pd
 import selfies as sf
@@ -8,8 +9,13 @@ from torch_geometric.data import Dataset, InMemoryDataset, Data
 from rdkit import Chem
 from ogb.utils import smiles2graph
 
+
 def smiles2data(smiles):
-    graph = smiles2graph(smiles)
+    try:
+        graph = smiles2graph(smiles)
+    except:
+        print(f"Error in smiles2graph for SMILES: {smiles}")
+        raise AttributeError("Error in smiles2graph")
     x = torch.from_numpy(graph['node_feat'])
     edge_index = torch.from_numpy(graph['edge_index'], )
     edge_attr = torch.from_numpy(graph['edge_feat'])
@@ -157,11 +163,19 @@ class MolCapExtended(InMemoryDataset):
         df = pd.read_csv(path)
         self.data_list.extend(df.to_dict('records'))
         # print(f"Loaded {len(df)} records from {file_path}")
+        self.instructions = {
+            "pretrain_captioning": [
+                "Describe this molecule.",
+                "Provide a description of this molecule.",
+                "What can you tell me about this molecule?",
+                "Could you provide a description of this molecule?",
+                "Could you give me a brief overview of this molecule?",
+                "Provide a brief overview of this molecule.",
+                "Please give me some details about this molecule.",
+            ],
+        }
 
-        if not prompt:
-            self.prompt = 'The SMILES of this molecule is [START_I_SMILES]{}[END_I_SMILES]. '
-        else:
-            self.prompt = prompt
+        self.smiles_max_len = 128
         self.perm = None
 
     def _selfies_to_smiles(self, selfies):
@@ -179,20 +193,33 @@ class MolCapExtended(InMemoryDataset):
         isomeric_smiles = Chem.MolToSmiles(mol, isomericSmiles=True)
         return isomeric_smiles
 
+    def _to_aromatic(self, smiles):
+        mol = Chem.MolFromSmiles(smiles)
+        aromatic_smiles = Chem.MolToSmiles(mol, isomericSmiles=True)
+        if aromatic_smiles:
+            return aromatic_smiles
+        else:
+            return smiles
+
     def __len__(self) -> int:
         return len(self.data_list)
 
     def __getitem__(self, index):
         data = self.data_list[index]
+        # Randomly use aromatic SMILES
+        if random.random() > 0.5:
+            data["SMILES"] = self._to_aromatic(data["SMILES"])
+        iupac = data['IUPACName']
         graph = smiles2data(data['SMILES'])
         graph.text = data['description']
         graph.smiles = data['SMILES']
-        if self.prompt.find('{}') >= 0:
-            smiles_prompt = self.prompt.format(graph.smiles[:128])
-        else:
-            smiles_prompt = self.prompt
+        task = "pretrain_captioning"
+        instruction = random.choice(self.instructions[task])
 
-        return graph, str(graph.text) + "\n", smiles_prompt # Need to clean up the text data
+        input_prompt = f"[START_I_SMILES]{graph.smiles[:self.smiles_max_len]}[END_I_SMILES]"
+        label_prompt = f"\n\nThe molecule's IUPAC name is {iupac}.\n\nQuestion: {instruction}\n\nAnswer: {data['description']}"
+
+        return graph, label_prompt, input_prompt, task
 
 
 if __name__ == '__main__':

@@ -95,7 +95,7 @@ class TrainCollater:
         self.graph_only = graph_only
         
     def __call__(self, batch):
-        graphs, texts, smiles_prompt = zip(*batch)
+        graphs, texts, smiles_prompt, tasks = zip(*batch)
         graphs = self.collater(graphs)
         
         ## deal with prompt
@@ -121,7 +121,7 @@ class TrainCollater:
                                      max_length=self.text_max_len,
                                      return_tensors='pt',
                                      return_attention_mask=True)
-        return graphs, smiles_prompt_tokens, text_tokens
+        return graphs, smiles_prompt_tokens, text_tokens, tasks
 
 
 class InferenceCollater:
@@ -135,7 +135,7 @@ class InferenceCollater:
         self.graph_only = graph_only
         
     def __call__(self, batch):
-        graphs, texts, smiles_prompt = zip(*batch)
+        graphs, texts, smiles_prompt, tasks = zip(*batch)
         graphs = self.collater(graphs)
         smiles_prompt = [smiles_handler(p, self.mol_ph, self.is_gal, self.graph_only)[0] for p in smiles_prompt]
 
@@ -151,7 +151,7 @@ class InferenceCollater:
 
         is_mol_token = smiles_prompt_tokens.input_ids == self.mol_token_id
         smiles_prompt_tokens['is_mol_token'] = is_mol_token
-        return graphs, smiles_prompt_tokens, texts
+        return graphs, smiles_prompt_tokens, texts, tasks
 
 
 class PropertyPredictionDM(LightningDataModule):
@@ -175,12 +175,14 @@ class PropertyPredictionDM(LightningDataModule):
         self.prompt = args.prompt
         self.graph_only = args.graph_only
         
-        self.train_dataset = PropertyPrediction(root+'train.pt', text_max_len, self.prompt)
-        self.val_dataset = PropertyPrediction(root+'val.pt', text_max_len, self.prompt)
-        self.test_dataset = PropertyPrediction(root+'test.pt', text_max_len, self.prompt)
+        # self.train_dataset = PropertyPrediction(root+'train.pt', text_max_len, self.prompt)
+        # self.val_dataset = PropertyPrediction(root+'val.pt', text_max_len, self.prompt)
+        # self.test_dataset = PropertyPrediction(root+'test.pt', text_max_len, self.prompt)
+        self.train_dataset = PropertyPrediction("train")
+        self.test_dataset = PropertyPrediction("test")
         
-        self.train_subset_dataset = PropertyPrediction(root+'train.pt', text_max_len, self.prompt)
-        self.train_subset_dataset.data_list = self.train_subset_dataset.data_list[:1000]
+        # self.train_subset_dataset = PropertyPrediction(root+'train.pt', text_max_len, self.prompt)
+        # self.train_subset_dataset.data_list = self.train_subset_dataset.data_list[:1000]
 
         self.init_tokenizer(tokenizer)
         self.mol_ph_token = '<mol>' * self.args.num_query_token
@@ -190,9 +192,9 @@ class PropertyPredictionDM(LightningDataModule):
     def init_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
         self.train_dataset.tokenizer = tokenizer
-        self.val_dataset.tokenizer = tokenizer
+        # self.val_dataset.tokenizer = tokenizer
         self.test_dataset.tokenizer = tokenizer
-        self.train_subset_dataset.tokenizer = tokenizer
+        # self.train_subset_dataset.tokenizer = tokenizer
         self.mol_token_id = self.tokenizer.mol_token_id
         # self.tokenizer.mol_token_id = tokenizer("<mol>", add_special_tokens=False).input_ids[0]
 
@@ -212,7 +214,7 @@ class PropertyPredictionDM(LightningDataModule):
     
     def val_dataloader(self):
         val_loader = DataLoader(
-            self.val_dataset,
+            self.test_dataset,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
@@ -221,16 +223,16 @@ class PropertyPredictionDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=TrainCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
-        val_loader_2 = DataLoader(
-            self.val_dataset,
-            batch_size=self.inference_batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=False,
-            drop_last=False,
-            persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
-        )
+        # val_loader_2 = DataLoader(
+        #     self.val_dataset,
+        #     batch_size=self.inference_batch_size,
+        #     shuffle=False,
+        #     num_workers=self.num_workers,
+        #     pin_memory=False,
+        #     drop_last=False,
+        #     persistent_workers=True,
+        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        # )
         test_loader = DataLoader(
             self.test_dataset,
             batch_size=self.inference_batch_size,
@@ -241,18 +243,18 @@ class PropertyPredictionDM(LightningDataModule):
             persistent_workers=True,
             collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
         )
-        train_subset_loader = DataLoader(
-            self.train_subset_dataset,
-            batch_size=self.inference_batch_size,
-            shuffle=False,
-            num_workers=self.num_workers,
-            pin_memory=False,
-            drop_last=False,
-            persistent_workers=True,
-            collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
-        )
-        return [val_loader, test_loader, train_subset_loader, val_loader_2]
-        # return [val_loader, test_loader]
+        # train_subset_loader = DataLoader(
+        #     self.train_subset_dataset,
+        #     batch_size=self.inference_batch_size,
+        #     shuffle=False,
+        #     num_workers=self.num_workers,
+        #     pin_memory=False,
+        #     drop_last=False,
+        #     persistent_workers=True,
+        #     collate_fn=InferenceCollater(self.tokenizer, self.text_max_len, self.mol_ph_token, self.mol_token_id, self.is_gal, self.graph_only),
+        # )
+        # return [val_loader, test_loader, train_subset_loader, val_loader_2]
+        return [val_loader, test_loader]
     
     def test_dataloader(self):
         loader = DataLoader(

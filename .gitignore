@@ -10,4 +10,6 @@ Text2graph
 analysis_results/
 analysis_results_origin/
 all_checkpoints_backup/
+CoT_experiments/data/
+CoT_experiments/results/
 .vscode/
