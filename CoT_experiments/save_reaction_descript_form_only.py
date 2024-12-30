@@ -48,6 +48,8 @@ def remove_atom_mapping(atommaped_reaction):
 
 
 
+
+
 with open('CoT_experiments/data/rxnfp/rxnclass2id.json', 'r') as f:
     rxnclass2id = json.load(f)
 
@@ -58,21 +60,36 @@ all_classes =sorted(rxnclass2id.keys())
 df = pd.read_csv('CoT_experiments/data/rxnfp/schneider50k.tsv', sep='\t')
 df['class_id'] = [rxnclass2id[c] for c in df.rxn_class]
 df['class_name'] = [rxnclass2name[c] for c in df.rxn_class]
-# train_df = df[df.split=='train']
-# test_df = df[df.split=='test']
-# train_df = df
-# test_df = df
 
-# open "CoT_experiments/data/rxnfp/fps_ft.npz" with np.load
 all_fingerprints = np.load('CoT_experiments/data/rxnfp/fps_ft.npz')['fps']
 
 lr_cls =  LogisticRegression(max_iter=100)
 lr_classifier_trained = lr_cls.fit(all_fingerprints, df.class_id.values.tolist())
 
 
-preds = lr_classifier_trained.predict(all_fingerprints)
-predicted = [all_classes[x] for x in preds]
-expected = [all_classes[x] for x in df.class_id.values.tolist()]
-accuracy = calcualte_accuracy(predicted, expected)
-print(f"Train accuracy: {accuracy}")
+model, tokenizer = get_default_model_and_tokenizer("bert_ft")
+rxnfp_generator = RXNBERTFingerprintGenerator(model, tokenizer)
 
+# Load data/USPTO/USPTO_50K.csv
+uspto_pd = pd.read_csv('data/USPTO/USPTO_50K.csv')
+if not ("reaction_id" in uspto_pd.columns and "reaction_name" in uspto_pd.columns):
+    uspto_fingerprints = generate_fingerprints(uspto_pd['reactions'].tolist(), rxnfp_generator, batch_size=32)
+    preds = lr_classifier_trained.predict(uspto_fingerprints)
+    pred_ids = [all_classes[x] for x in preds]
+    pred_names = [rxnclass2name[c] for c in pred_ids]
+    # Add reaction_id and reaction_name columns
+    uspto_pd['reaction_id'] = pred_ids
+    uspto_pd['reaction_name'] = pred_names
+    uspto_pd.to_csv('data/USPTO/USPTO_50K.csv', index=False)
+    print()
+
+
+uspto_reactions = uspto_pd['reactions'].tolist()
+uspto_reaction_ids = uspto_pd['reaction_id'].tolist()
+uspto_reaction_names = uspto_pd['reaction_name'].tolist()
+
+
+for uspto_reaction, pred_name in zip(uspto_reactions, uspto_reaction_names):
+    print(f"Reaction: {uspto_reaction}")
+    print(f"Predicted class: {pred_name}")
+    print()

@@ -438,7 +438,7 @@ class Blip2Stage2(pl.LightningModule):
                         targets = [i['target'] for i in p_t]
                         result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
                         for key, value in result_dict.items():
-                            self.log(key+"_forward_test", value, sync_dist=False)
+                            self.log(key+"_reagent_test", value, sync_dist=False)
                     elif task == "forward":
                         predictions = [i['prediction'] for i in p_t]
                         targets = [i['target'] for i in p_t]

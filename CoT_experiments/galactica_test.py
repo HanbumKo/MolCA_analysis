@@ -9,20 +9,10 @@ from tqdm import tqdm
 from glob import glob
 from collections import defaultdict
 from utils.help_funcs import calculate_smiles_metrics
+from transformers import AutoTokenizer, OPTForCausalLM
+from transformers import GenerationConfig
 
 
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-# import CoT_experiments/keys.txt
-with open("CoT_experiments/keys.txt", "r") as f:
-    keys = f.readlines()
-    keys = [k.strip() for k in keys]
-    for key in keys:
-        env_name, env_value = key.split("=")
-        os.environ[env_name] = env_value
-
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 
 
@@ -68,45 +58,40 @@ def regression_evaluate_gpt(predictions, targets):
     return mae, mse, rmse, validity
 
 
-def get_openai_output(message, model="gpt-3.5-turbo", task_name="homo"):
-    if task_name == "homo" or task_name == "lumo" or task_name == "gap":
-        system_message = (
-            "You are a chemistry expert and a helpful assistant. "
-            "The user will ask about molecules and their property values, "
-            "and you must provide those property values without using tools. "
-            "When you answer, please explicitly show your detailed reasoning steps "
-            "(chain-of-thought) before providing the final numerical answer. "
-            "The numerical answer should be enclosed with <NUM> and </NUM>. "
-            "Molecules will be given in the SMILES format enclosed with <SMILES> and </SMILES>."
-        )
-    elif task_name == "forward" or task_name == "retro" or task_name == "reagent":
-        system_message = (
-            "Your task is to predict the outcomes related to chemical reaction tasks that the user asks about. "
-            "The user will mainly inquire about forward reaction prediction, single-step retrosynthesis, "
-            "and reagent prediction. The user will provide the molecular SMILES enclosed within `<SMILES>` "
-            "and `</SMILES>`. You should provide your prediction as a SMILES representation enclosed within `<ANSWER>` and `</ANSWER>`. "
-            "When responding, make sure to include the full reasoning process leading to your prediction."
-        )
-    else:
-        raise ValueError(f"Invalid task: {task_name}")
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": system_message,
-            },
-            {
-                "role": "user",
-                "content": message
-            }
-        ],
-        temperature=0.0,
-        max_tokens=500
+def get_galactica_output(question, model_transformers):
+    input_text = f"Question: {question}\n<work>"
+    input_id = tokenizer(input_text, return_tensors="pt").input_ids.to("cuda:0")
+    output = model_transformers.generate(
+        input_id,
+        tokenizer=tokenizer,
+        do_sample=False,
+        top_p=0.,
+        temperature=0.,
+        num_beams=1,
+        max_new_tokens=500,
+        stop_strings="</work>",
     )
-    output = response.choices[0].message.content.strip()
-
-    return output
+    output_text = tokenizer.decode(output[0], skip_special_tokens=False)
+    if not "</work>" in output_text:
+        output_text = output_text + "</work>"
+    # print(output_text)
+    input_text = f"{output_text}\n\nAnswer: "
+    input_ids = tokenizer(input_text, return_tensors="pt").input_ids.to("cuda:0")
+    output = model_transformers.generate(
+        input_ids,
+        tokenizer=tokenizer,
+        do_sample=False,
+        top_p=0.,
+        temperature=0.,
+        num_beams=1,
+        max_new_tokens=100,
+        # stop_strings="</work>",
+    )
+    output_text = tokenizer.decode(output[0], skip_special_tokens=False)
+    if not "</s>" in output_text:
+        output_text = output_text + "</s>"
+    # print(output_text)
+    return output_text
 
 
 def smiles_to_selfies(smiles):
@@ -180,33 +165,34 @@ for model in models:
 
 
 # Reaction prediction tasks
-test_i = 99999
+test_i = 999999
 files = [
     ("data/biot5_plus_data/tasks_plus/task216_forward_reaction_prediction_molinst_mol_test.json", "forward"),
     ("data/biot5_plus_data/tasks_plus/task219_retrosynthesis_molinst_mol_test.json", "retro"),
     ("data/biot5_plus_data/tasks_plus/task213_reagent_prediction_molinst_mol_test.json", "reagent"),
 ]
-models = ["gpt-3.5-turbo", "gpt-4o-2024-11-20"]
+models = ["facebook/galactica-125m", "facebook/galactica-1.3b", "facebook/galactica-6.7b"]
 for model in models:
+    model_replaced = model.split("/")[1]
+    tokenizer = AutoTokenizer.from_pretrained(model)
+    model_transformers = OPTForCausalLM.from_pretrained(model, device_map=0)
+    # generation_config = GenerationConfig.from_pretrained(model)
     for file_name, task_name in files:
         ground_truth_list = []
-        raw_output_list = []
+        full_text_list = []
         prediction_list = []
         with open(file_name, 'r') as f:
             dataset = json.load(f)["Instances"]
-        for i, d in tqdm(enumerate(dataset), total=len(dataset), desc=f"Task: {task_name}, Model: {model}"):
+        for i, d in tqdm(enumerate(dataset), total=len(dataset), desc=f"Task: {task_name}, Model: {model_replaced}"):
             instruction = d['instruction']
             # iupac = d['input'].split('<boi>')[1].split('<eoi>')[0]
             smiles = d['input'].split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            user_message = f"{instruction}\n\n<SMILES>{smiles}</SMILES>"
+            question = f"{instruction}\n[START_I_SMILES]{smiles}[END_I_SMILES]"
             ground_truth = d['output'][0].split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0]
-            raw_response = get_openai_output(message=user_message, model=model, task_name=task_name)
-            if "<ANSWER>" in raw_response and "</ANSWER>" in raw_response:
-                prediction = raw_response.split("<ANSWER>")[1].split("</ANSWER>")[0]
-            else:
-                prediction = None
+            full_text = get_galactica_output(question, model_transformers=model_transformers)
+            prediction = full_text.split("Answer: ")[1].split("</s>")[0]
             ground_truth_list.append(ground_truth)
-            raw_output_list.append(raw_response)
+            full_text_list.append(full_text)
             prediction_list.append(prediction)
             if i%test_i == test_i-1:
                 break
@@ -221,11 +207,11 @@ for model in models:
         print("="*100)
         print()
         # save eval_results to file
-        with open(f"CoT_experiments/results/cot_prompt_test/eval_results/{task_name}_{model}.txt", "w") as f:
+        with open(f"CoT_experiments/results/cot_prompt_test/eval_results/{task_name}_{model_replaced}.txt", "w") as f:
             f.write(str(eval_results))
         gt_preds = [
-            {"ground_truth": gt, "prediction": pred, "raw_output": raw} for gt, pred, raw in zip(ground_truth_list, prediction_list, raw_output_list)
+            {"ground_truth": gt, "prediction": pred, "full_text_list": ft} for gt, pred, ft in zip(ground_truth_list, prediction_list, full_text_list)
         ]
-        with open(f"CoT_experiments/results/cot_prompt_test/gt_preds/{task_name}_{model}.json", "w") as f:
+        with open(f"CoT_experiments/results/cot_prompt_test/gt_preds/{task_name}_{model_replaced}.json", "w") as f:
             json.dump(gt_preds, f, indent=4)
-        print(f"Results saved for task: {task_name}, model: {model}")
+        print(f"Results saved for task: {task_name}, model: {model_replaced}")

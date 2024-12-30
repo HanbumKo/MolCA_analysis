@@ -13,3 +13,4 @@ all_checkpoints_backup/
 CoT_experiments/data/
 CoT_experiments/results/
 .vscode/
+CoT_experiments/keys.txt

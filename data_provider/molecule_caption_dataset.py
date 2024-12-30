@@ -208,9 +208,14 @@ class MolCapExtended(InMemoryDataset):
         data = self.data_list[index]
         # Randomly use aromatic SMILES
         if random.random() > 0.5:
-            data["SMILES"] = self._to_aromatic(data["SMILES"])
+            smiles = self._to_aromatic(data["SMILES"])
+        else:
+            smiles = data['SMILES']
         iupac = data['IUPACName']
-        graph = smiles2data(data['SMILES'])
+        try:
+            graph = smiles2data(smiles)
+        except:
+            graph = smiles2data(data["SMILES"])
         graph.text = data['description']
         graph.smiles = data['SMILES']
         task = "pretrain_captioning"

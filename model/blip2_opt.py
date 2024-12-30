@@ -232,7 +232,11 @@ class Blip2OPT(Blip2Base):
 
     def forward(self, batch):
         graphs, prompt_tokens, text_tokens, tasks = batch
-        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
+        if self.args.root == "biot5_plus_reaction_tasks":
+            all_graphs = [self.collater(graph) for graph in graphs]
+            mol_tokens_list = self.forward_graph_list(all_graphs)
+            device = mol_tokens_list[0].device
+        elif self.args.root.lower().find('forward') >= 0: # forward reaction prediction
             mol_tokens_list = self.forward_graph_list(graphs, prompt_tokens)
             device = mol_tokens_list[0].device
         elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
@@ -282,7 +286,10 @@ class Blip2OPT(Blip2Base):
         # (prompt_tokens.input_ids == 22).nonzero(as_tuple=True)[1]
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
+        if self.args.root == "biot5_plus_reaction_tasks":
+            for i, mol_tokens in enumerate(mol_tokens_list):
+                prompt_embeds[i][prompt_tokens.is_mol_token[i]] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
+        elif self.args.root.lower().find('forward') >= 0: # forward reaction prediction
             for i, mol_tokens in enumerate(mol_tokens_list):
                 prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1).to(dtype=torch.bfloat16)
         elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
@@ -403,7 +410,11 @@ class Blip2OPT(Blip2Base):
         prompt_tokens = samples['prompt_tokens']
         # prompt_lens = samples['prompt_lens']
         # with self.maybe_autocast():
-        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
+        if self.args.root == "biot5_plus_reaction_tasks":
+            all_graphs = [self.collater(graph) for graph in graphs]
+            mol_tokens_list = self.forward_graph_list(all_graphs)
+            device = mol_tokens_list[0].device
+        elif self.args.root.lower().find('forward') >= 0: # forward reaction prediction
             mol_tokens_list = self.forward_graph_list(graphs)
             device = mol_tokens_list[0].device
         elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction
@@ -443,7 +454,10 @@ class Blip2OPT(Blip2Base):
                 prompt_tokens = self.expand_prompt_token(prompt_tokens, graph_masks)
         
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
-        if self.args.root.lower().find('forward') >= 0: # forward reaction prediction
+        if self.args.root == "biot5_plus_reaction_tasks":
+            for i, mol_tokens in enumerate(mol_tokens_list):
+                prompt_embeds[i][prompt_tokens.is_mol_token[i]] = mol_tokens.flatten(0, 1).to(dtype=torch.bfloat16)
+        elif self.args.root.lower().find('forward') >= 0: # forward reaction prediction
             for i, mol_tokens in enumerate(mol_tokens_list):
                 prompt_embeds[prompt_tokens.is_mol_token] = torch.concat(mol_tokens_list, dim=0).flatten(0, 1)
         elif self.args.root.lower().find('reagent_prediction') >= 0: # reagent prediction

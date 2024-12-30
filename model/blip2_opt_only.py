@@ -130,39 +130,25 @@ class Blip2OPTOnly(Blip2Base):
         super().__init__()
         self.args = args
 
-        self.graph_encoder, self.ln_graph = self.init_graph_encoder(gin_num_layers, gin_hidden_dim, gin_drop_ratio)
-        self.tune_gnn = tune_gnn
-        if not tune_gnn:
-            for name, param in self.graph_encoder.named_parameters():
-                param.requires_grad = False
-            self.graph_encoder = self.graph_encoder.eval()
-            self.graph_encoder.train = disabled_train
-            logging.info("freeze graph encoder")
-        
+        self.tune_gnn = tune_gnn        
         self.num_query_token = num_query_token
-        # self.Qformer, self.query_tokens = self.init_Qformer(bert_name, num_query_token, self.graph_encoder.num_features, cross_attention_freq)
-        # ### remove the unused parameters
-        # self.Qformer.cls = None
-        # self.Qformer.bert.embeddings.word_embeddings = None
-        # self.Qformer.bert.embeddings.position_embeddings = None
-        # for layer in self.Qformer.bert.encoder.layer:
-        #     layer.output = None
-        #     layer.intermediate = None
 
         ## initialize opt model
-        self.opt_tokenizer = AutoTokenizer.from_pretrained("facebook/galactica-1.3b", use_fast=False, padding_side='right')
+        self.opt_tokenizer = AutoTokenizer.from_pretrained(opt_model, use_fast=False, padding_side='right')
         self.opt_tokenizer.add_special_tokens({'pad_token': '<pad>'})
-        self.opt_tokenizer.add_tokens('<mol>') # molecule placeholder
-        self.mol_token = '<mol>'
-        self.opt_tokenizer.mol_token_id = self.opt_tokenizer("<mol>", add_special_tokens=False).input_ids[0]
+        # self.opt_tokenizer.add_tokens('<mol>') # molecule placeholder
+        # self.mol_token = '<mol>'
+        # self.opt_tokenizer.mol_token_id = self.opt_tokenizer("<mol>", add_special_tokens=False).input_ids[0]
 
         self.collater = Collater([], [])
         
-
-        if torch.cuda.is_bf16_supported():
-            self.opt_model = OPTForCausalLM.from_pretrained("facebook/galactica-1.3b", torch_dtype=torch.bfloat16)
+        if opt_model == 'facebook/galactica-125m':
+            self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.bfloat16)
         else:
-            self.opt_model = OPTForCausalLM.from_pretrained("facebook/galactica-1.3b", torch_dtype=torch.float16)
+            if torch.cuda.is_bf16_supported():
+                self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.bfloat16)
+            else:
+                self.opt_model = OPTForCausalLM.from_pretrained(opt_model, torch_dtype=torch.float16)
         self.opt_model.resize_token_embeddings(len(self.opt_tokenizer)) ## this will cause bug when full fine-tuning the opt model
 
         if args.stage2_path:
@@ -198,30 +184,14 @@ class Blip2OPTOnly(Blip2Base):
             "\n", add_special_tokens=False
         ).input_ids[0]
 
-        # self.opt_proj = nn.Linear(
-        #     self.Qformer.config.hidden_size, self.opt_model.config.hidden_size
-        # )
-        if args.stage2_path:
-            self.opt_proj.weight.data = new_state_dict['opt_proj.weight']
-            self.opt_proj.bias.data = new_state_dict['opt_proj.bias']
-            print(f"loaded stage2 model from {args.stage2_path}")
-        
         ## fixme: no prompt yet
         self.prompt = prompt
         # prompt_tokens = self.opt_tokenizer(self.prompt, return_tensors="pt")
         # self.prompt_length = prompt_tokens.attention_mask.sum(1)
 
     def forward(self, batch):
-        graphs, prompt_tokens, text_tokens = batch
-        mol_tokens = None
+        graphs, prompt_tokens, text_tokens, tasks = batch
         device = prompt_tokens['input_ids'].device
-        is_mol_token = prompt_tokens['is_mol_token']
-        batch_size, prompt_length = prompt_tokens['input_ids'].shape
-        for k in prompt_tokens.keys():
-            if k == "is_mol_token":
-                continue
-            # prompt_tokens[k] = prompt_tokens[k][~is_mol_token].reshape(batch_size, prompt_length-self.num_query_token)
-            prompt_tokens[k] = prompt_tokens[k][~is_mol_token].reshape(batch_size, -1)
 
         empty_targets = torch.ones(prompt_tokens.attention_mask.shape, dtype=torch.long).to(device).fill_(-100)
         targets = text_tokens.input_ids.masked_fill(
@@ -241,20 +211,11 @@ class Blip2OPTOnly(Blip2Base):
             attention_mask=attention_mask,
             return_dict=True,
             labels=targets,
-            output_attentions=True,
+            output_attentions=False,
         )
         loss = outputs.loss
-        generation_attentions = outputs.attentions # (batch_size, num_heads, num_query_token, num_text_token)
-        target_start_idx = (targets != -100).nonzero(as_tuple=True)[1].min().item() # Same for all samples in the batch
-        
         return {
             "loss": loss,
-            # "cross_attentions": query_output.cross_attentions,
-            "generation_attentions": generation_attentions,
-            "target_start_idx": target_start_idx,
-            # "att_cos": att_cos.mean(),
-            # "att_kl": att_kl.mean(),
-            # "att_l2": att_l2.mean(),
         }
 
     @torch.no_grad()
@@ -286,13 +247,6 @@ class Blip2OPTOnly(Blip2Base):
         """
         graphs = samples['graphs']
         prompt_tokens = samples['prompt_tokens']
-        is_mol_token = prompt_tokens['is_mol_token']
-        batch_size, prompt_length = prompt_tokens['input_ids'].shape
-        for k in prompt_tokens.keys():
-            if k == "is_mol_token":
-                continue
-            # prompt_tokens[k] = prompt_tokens[k][~is_mol_token].reshape(batch_size, prompt_length-self.num_query_token)
-            prompt_tokens[k] = prompt_tokens[k][~is_mol_token].reshape(batch_size, -1)
 
         prompt_embeds = self.opt_model.get_input_embeddings()(prompt_tokens.input_ids)
 
@@ -316,6 +270,217 @@ class Blip2OPTOnly(Blip2Base):
         
         output_text = [text.strip() for text in output_text]
         return output_text
+
+    def expand_prompt_token(self, prompt_tokens, graph_masks):
+        # Expand the mol tokens to match the number of nodes in the graph, the number of graph is different for each sample
+        # prompt_tokens: {input_ids: (batch_size, prompt_len), token_type_ids: (batch_size, prompt_len), attention_mask: (batch_size, prompt_len), is_mol_token: (batch_size, prompt_len)}
+        # graph_masks: (batch_size, maximum_num_node)
+        batch_size, prompt_len = prompt_tokens.input_ids.shape
+        device = prompt_tokens.input_ids.device
+        
+        # Calculate number of nodes in each graph
+        node_counts = graph_masks.sum(dim=1) # shape: (batch_size)
+
+        expanded_input_ids = []
+        expanded_attention_mask = []
+        expanded_token_type_ids = []
+        expanded_is_mol_token = []
+        
+        for batch_idx in range(batch_size):
+            # Find the start and end indices of the '1' values in the current batch
+            mol_start_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][0] # 첫 번째 '1'의 시작 인덱스
+            mol_end_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][-1] + 1 # 마지막 '1'의 끝 인덱스 + 1
+
+            # Expand the '1' section to match the number of nodes in the graph
+            num_nodes = node_counts[batch_idx].item()
+
+            expanded_section = torch.ones(num_nodes).to(device) * 50000
+            new_input_ids = torch.cat([
+                prompt_tokens.input_ids[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.input_ids[batch_idx][mol_end_idx:] # After '1'
+            ])
+            
+            expanded_section = torch.ones(num_nodes).to(device)
+            new_attention_mask = torch.cat([
+                prompt_tokens.attention_mask[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.attention_mask[batch_idx][mol_end_idx:] # After '1'
+            ])
+            
+            expanded_section = torch.zeros(num_nodes).to(device)
+            new_token_type_ids = torch.cat([
+                prompt_tokens.token_type_ids[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.token_type_ids[batch_idx][mol_end_idx:] # After '1'
+            ])
+
+            expanded_section = torch.ones(num_nodes).to(device) # Generate '1' for the number of nodes
+            # Concatenate the original is_mol_token tensor with the expanded section
+            new_is_mol_token = torch.cat([
+                prompt_tokens.is_mol_token[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.is_mol_token[batch_idx][mol_end_idx:] # After '1'
+            ])
+
+            expanded_input_ids.append(new_input_ids)
+            expanded_attention_mask.append(new_attention_mask)
+            expanded_token_type_ids.append(new_token_type_ids)
+            expanded_is_mol_token.append(new_is_mol_token)
+
+        max_length = max(tensor.size(0) for tensor in expanded_input_ids)
+        padded_input_ids = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=1) for tensor in expanded_input_ids
+        ]
+        padded_attention_mask = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_attention_mask
+        ]
+        padded_token_type_ids = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_token_type_ids
+        ]
+        padded_is_mol_token = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_is_mol_token
+        ]
+
+        prompt_tokens.input_ids = torch.stack(padded_input_ids)
+        prompt_tokens.attention_mask = torch.stack(padded_attention_mask)
+        prompt_tokens.token_type_ids = torch.stack(padded_token_type_ids)
+        prompt_tokens.is_mol_token = torch.stack(padded_is_mol_token).bool()
+        
+        prompt_tokens['input_ids'] = torch.stack(padded_input_ids)
+        prompt_tokens['attention_mask'] = torch.stack(padded_attention_mask)
+        prompt_tokens['token_type_ids'] = torch.stack(padded_token_type_ids)
+        prompt_tokens['is_mol_token'] = torch.stack(padded_is_mol_token)
+
+        return prompt_tokens
+
+    def expand_prompt_token_multiple(self, prompt_tokens, graph_masks, batch_i):
+        # Expand the mol tokens to match the number of nodes in the graph, the number of graph is different for each sample
+        # prompt_tokens: {input_ids: (batch_size, prompt_len), token_type_ids: (batch_size, prompt_len), attention_mask: (batch_size, prompt_len), is_mol_token: (batch_size, prompt_len)}
+        # graph_masks: (batch_size, maximum_num_node)
+        batch_size, _ = graph_masks.shape
+        device = prompt_tokens.input_ids.device
+        
+        # Calculate number of nodes in each graph
+        node_counts = graph_masks.sum(dim=1) # shape: (batch_size)
+        
+        current_input_ids = prompt_tokens.input_ids[batch_i]
+        current_attention_mask = prompt_tokens.attention_mask[batch_i]
+        current_token_type_ids = prompt_tokens.token_type_ids[batch_i]
+        current_is_mol_token = prompt_tokens.is_mol_token[batch_i]
+
+        expanded_input_ids = []
+        expanded_attention_mask = []
+        expanded_token_type_ids = []
+        expanded_is_mol_token = []
+        
+        false_lenghts = self.count_false_sequences(current_is_mol_token)
+        
+        for batch_idx in range(batch_size):
+            # Find the start and end indices of the '1' values in the current batch
+            # mol_start_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][0] # 첫 번째 '1'의 시작 인덱스
+            # mol_end_idx = (prompt_tokens.is_mol_token[batch_idx] == 1).nonzero(as_tuple=True)[0][-1] + 1 # 마지막 '1'의 끝 인덱스 + 1
+            current_is_mol_token = prompt_tokens.is_mol_token[batch_i]
+
+            # Expand the '1' section to match the number of nodes in the graph
+            num_nodes = node_counts[batch_idx].item()
+            
+            one_indices = (current_is_mol_token == 1).nonzero(as_tuple=True)[0]
+            expanded_tensor = torch.zeros_like(current_is_mol_token)
+            if len(one_indices) > 0:
+                # 연속된 구간 계산
+                start_idx = one_indices[0]
+                for i in range(1, len(one_indices)):
+                    if one_indices[i] != one_indices[i - 1] + 1: # 연속이 끊긴 경우
+                        end_idx = one_indices[i - 1] + 1
+                        expanded_tensor[start_idx:start_idx + num_nodes] = 1
+                        start_idx = one_indices[i]
+
+                # 마지막 구간 처리
+                expanded_tensor[start_idx:start_idx + num_nodes] = 1
+
+            expanded_is_mol_token.append(expanded_tensor)
+            
+
+            expanded_section = torch.ones(num_nodes).to(device) * 50000
+            new_input_ids = torch.cat([
+                prompt_tokens.input_ids[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.input_ids[batch_idx][mol_end_idx:] # After '1'
+            ])
+            
+            expanded_section = torch.ones(num_nodes).to(device)
+            new_attention_mask = torch.cat([
+                prompt_tokens.attention_mask[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.attention_mask[batch_idx][mol_end_idx:] # After '1'
+            ])
+            
+            expanded_section = torch.zeros(num_nodes).to(device)
+            new_token_type_ids = torch.cat([
+                prompt_tokens.token_type_ids[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.token_type_ids[batch_idx][mol_end_idx:] # After '1'
+            ])
+
+            expanded_section = torch.ones(num_nodes).to(device) # Generate '1' for the number of nodes
+            # Concatenate the original is_mol_token tensor with the expanded section
+            new_is_mol_token = torch.cat([
+                prompt_tokens.is_mol_token[batch_idx][:mol_start_idx], # Prior to '1'
+                expanded_section.int(), # Expanded '1' part
+                prompt_tokens.is_mol_token[batch_idx][mol_end_idx:] # After '1'
+            ])
+
+            expanded_input_ids.append(new_input_ids)
+            expanded_attention_mask.append(new_attention_mask)
+            expanded_token_type_ids.append(new_token_type_ids)
+            expanded_is_mol_token.append(new_is_mol_token)
+
+        max_length = max(tensor.size(0) for tensor in expanded_input_ids)
+        padded_input_ids = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=1) for tensor in expanded_input_ids
+        ]
+        padded_attention_mask = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_attention_mask
+        ]
+        padded_token_type_ids = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_token_type_ids
+        ]
+        padded_is_mol_token = [
+            F.pad(tensor, (max_length - tensor.size(0), 0), mode='constant', value=0) for tensor in expanded_is_mol_token
+        ]
+
+        prompt_tokens.input_ids = torch.stack(padded_input_ids)
+        prompt_tokens.attention_mask = torch.stack(padded_attention_mask)
+        prompt_tokens.token_type_ids = torch.stack(padded_token_type_ids)
+        prompt_tokens.is_mol_token = torch.stack(padded_is_mol_token).bool()
+        
+        prompt_tokens['input_ids'] = torch.stack(padded_input_ids)
+        prompt_tokens['attention_mask'] = torch.stack(padded_attention_mask)
+        prompt_tokens['token_type_ids'] = torch.stack(padded_token_type_ids)
+        prompt_tokens['is_mol_token'] = torch.stack(padded_is_mol_token)
+
+        return prompt_tokens
+
+    def count_false_sequences(self, bool_tensor):
+        # Convert to integers (False -> 0, True -> 1)
+        int_tensor = bool_tensor.to(dtype=torch.int)
+        
+        # Compute the difference between consecutive elements
+        diff = torch.diff(int_tensor, prepend=torch.tensor([1]))
+        
+        # Identify the start and end of False sequences
+        false_starts = (diff == -1).nonzero(as_tuple=True)[0]
+        false_ends = (diff == 1).nonzero(as_tuple=True)[0]
+        
+        # If the tensor ends with False, append the last index + 1 to false_ends
+        if len(false_ends) == 0 or false_starts[-1] > false_ends[-1]:
+            false_ends = torch.cat([false_ends, torch.tensor([len(bool_tensor)])])
+        
+        # Calculate lengths of each False sequence
+        false_lengths = (false_ends - false_starts).tolist()
+        
+        return false_lengths
 
     def compute_avg_cosine_similarity(self, X):
         # X has shape (batch_size, num_query, feature_dim)
