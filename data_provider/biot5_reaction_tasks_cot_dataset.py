@@ -26,17 +26,17 @@ def split_float_with_separator(number):
     return result
 
 
-class BioT5Reaction(InMemoryDataset):
+class BioT5ReactionCoT(InMemoryDataset):
     def __init__(self, data_type):
-        super(BioT5Reaction, self).__init__()
+        super(BioT5ReactionCoT, self).__init__()
         # Load data pt file
         # self.data_list = torch.load(path)
 
         files = [
             # Regression tasks
-            (glob(f"data/biot5_plus_data/tasks_plus/*_forward_reaction_prediction_molinst_mol_{data_type}.json")[0], "forward"),
-            (glob(f"data/biot5_plus_data/tasks_plus/*_retrosynthesis_molinst_mol_{data_type}.json")[0], "retro",) ,
-            (glob(f"data/biot5_plus_data/tasks_plus/*_reagent_prediction_molinst_mol_{data_type}.json")[0] , "reagent"),
+            (glob(f"CoT_experiments/data/biot5_plus_reasoning_data/*_forward_reaction_prediction_molinst_mol_{data_type}.json")[0], "forward"),
+            (glob(f"CoT_experiments/data/biot5_plus_reasoning_data/*_retrosynthesis_molinst_mol_{data_type}.json")[0], "retro",) ,
+            (glob(f"CoT_experiments/data/biot5_plus_reasoning_data/*_reagent_prediction_molinst_mol_{data_type}.json")[0] , "reagent"),
         ]
 
         self.data_type = data_type
@@ -52,7 +52,8 @@ class BioT5Reaction(InMemoryDataset):
                         "instruction": d['instruction'],
                         "input_smiles": d['input'].split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0],
                         "output_smiles": d['output'][0].split("[START_I_SMILES]")[1].split("[END_I_SMILES]")[0],
-                        "task": task
+                        "reasoning": d['reasoning'],
+                        "task": task,
                     }
                     self.data_list.append(data)
                     # if i == 50:
@@ -82,6 +83,7 @@ class BioT5Reaction(InMemoryDataset):
         instruction = data['instruction']
         input_smiles = data['input_smiles']
         output_smiles = data['output_smiles']
+        reasoning_text = data['reasoning']
         task = data['task']
         if task == "reagent":
             left_smiles = [smiles for smiles in input_smiles.split('>>')[0].split('.')]
@@ -91,14 +93,14 @@ class BioT5Reaction(InMemoryDataset):
             left_smiles_prompt = ".".join(left_tagged_smiles)
             right_smiles_prompt = ".".join(right_tagged_smiles)
             smiles_prompt = f"{left_smiles_prompt}>>{right_smiles_prompt}"
-            smiles_prompt = f"Question: {instruction}\n{smiles_prompt}\n\nAnswer: "
+            smiles_prompt = f"Question: {instruction}\n{smiles_prompt}\n<work>\n{reasoning_text}\n</work>\n\nAnswer: "
             all_input_smiles = left_smiles + right_smiles
         else:
             all_input_smiles = input_smiles.split('.')
             tagged_smiles = [f"[START_I_SMILES]{smile}[END_I_SMILES]" for smile in all_input_smiles]
             smiles_prompt = ".".join(tagged_smiles)
-            smiles_prompt = f"Question: {instruction}\n{smiles_prompt}\n\nAnswer: "
-        
+            smiles_prompt = f"Question: {instruction}\n{smiles_prompt}\n<work>\n{reasoning_text}\n</work>\n\nAnswer: "
+
         graph_list = []
         for i, smiles in enumerate(all_input_smiles):
             graph = smiles2data(smiles)
@@ -111,5 +113,5 @@ class BioT5Reaction(InMemoryDataset):
 
 
 if __name__ == '__main__':
-    dataset = BioT5Reaction(data_type="test")
+    dataset = BioT5ReactionCoT(data_type="test")
     print(dataset[0])

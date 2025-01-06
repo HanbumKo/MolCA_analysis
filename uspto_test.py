@@ -2,10 +2,11 @@ import deepchem as dc
 
 # USPTO 데이터셋 로드
 tasks, datasets, transformers = dc.molnet.load_uspto(
-    featurizer='Raw',
-    split='scaffold',
+    # featurizer='Raw',
+    # split='scaffold',
     data_dir='data/USPTO',
-    subset="50K",
+    save_dir = 'data/USPTO',
+    subset="FULL",
     reload=True
 )
 

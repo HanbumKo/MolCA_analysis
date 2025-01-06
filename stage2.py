@@ -16,6 +16,8 @@ from data_provider.reagent_prediction_dm import ReagentPredictionDM
 from data_provider.retrosynthesis_dm import RetrosynthesisDM, USPTORetrosynthesisDM
 from data_provider.biot5_property_regression_dm import BioT5PropertyRegressionDM
 from data_provider.biot5_reaction_tasks_dm import BioT5ReactionDM
+from data_provider.biot5_reaction_tasks_stringonly_dm import BioT5ReactionStringOnlyDM
+from data_provider.biot5_reaction_tasks_cot_stringonly_dm import BioT5ReactionCoTStringOnlyDM
 from model.blip2_stage2 import Blip2Stage2
 
 # torch.set_default_dtype(torch.float16)
@@ -72,6 +74,10 @@ def main(args):
             dm = BioT5PropertyRegressionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         elif args.root == "biot5_plus_reaction_tasks":
             dm = BioT5ReactionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root == "biot5_plus_reaction_tasks_stringonly":
+            dm = BioT5ReactionStringOnlyDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root == "biot5_plus_cot_reaction_tasks_stringonly":
+            dm = BioT5ReactionCoTStringOnlyDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         elif args.root == "data/USPTO_retrosynthesis/USPTO_50K_data/":
             dm = USPTORetrosynthesisDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
             monitor = "num_t1_exact_match_val"
@@ -105,7 +111,7 @@ def main(args):
                                          filename='{epoch:02d}',
                                          every_n_epochs=args.caption_eval_epoch, 
                                          save_last=True, 
-                                         save_top_k=-1,
+                                         save_top_k=0,
                                         #  monitor=monitor,
                                         #  monitor='val molecule loss/dataloader_idx_0',
                                          save_on_train_epoch_end=False))
