@@ -89,10 +89,10 @@ Ensure the explanation logically correlates the substructures present in the rea
 
 The user will provide the following information:
     - Reactants (in SMILES format)
-    - Reagents (in SMILES format)
+    - Catalyst (in SMILES format)
     - Products (in SMILES format)
     - Substructures present in the reactants
-    - Substructures present in the reagents
+    - Substructures present in the catalyst
     - Substructures present in the products
     - A description of the chemical reaction and its mechanism
 
@@ -107,10 +107,10 @@ Ensure the explanation logically correlates the substructures present in the rea
 
 The user will provide the following information:
     - Reactants (in SMILES format)
-    - Reagents (in SMILES format)
+    - Solvent (in SMILES format)
     - Products (in SMILES format)
     - Substructures present in the reactants
-    - Substructures present in the reagents
+    - Substructures present in the solvent
     - Substructures present in the products
     - A description of the chemical reaction and its mechanism
 
@@ -125,6 +125,10 @@ Ensure the explanation logically correlates the substructures present in the rea
         user_message += f"### Reactants (SMILES format)\n{data_dict['reactants']}\n\n"
     if data_dict.get("reagents"):
         user_message += f"### Reagents (SMILES format)\n{data_dict['reagents']}\n\n"
+    if data_dict.get("catalyst"):
+        user_message += f"### Catalyst (SMILES format)\n{data_dict['catalyst']}\n\n"
+    if data_dict.get("solvent"):
+        user_message += f"### Solvent (SMILES format)\n{data_dict['solvent']}\n\n"
     if data_dict.get("product"):
         user_message += f"### Products (SMILES format)\n{data_dict['product']}\n\n"
     if data_dict.get("exist_precursor"):
@@ -133,6 +137,10 @@ Ensure the explanation logically correlates the substructures present in the rea
         user_message += f"### Substructures present in the reactants\n{data_dict['exist_reactants']}\n\n"
     if data_dict.get("exist_reagents"):
         user_message += f"### Substructures present in the reagents\n{data_dict['exist_reagents']}\n\n"
+    if data_dict.get("exist_catalyst"):
+        user_message += f"### Substructures present in the catalyst\n{data_dict['exist_catalyst']}\n\n"
+    if data_dict.get("exist_solvent"):
+        user_message += f"### Substructures present in the solvent\n{data_dict['exist_solvent']}\n\n"
     if data_dict.get("exist_product"):
         user_message += f"### Substructures present in the products\n{data_dict['exist_product']}\n\n"
     if data_dict.get("predicted_reaction"):
@@ -169,19 +177,19 @@ for file_name in glob("CoT_experiments/data/reaction_docs/docs_chatgpt/*.txt"):
 
 
 files = [
-    # ("data/presto_data/forward/train-00000-of-00001.json", "train", "forward"),
-    # ("data/presto_data/forward/test-00000-of-00001.json", "test", "forward"),
-    # ("data/presto_data/retro/train-00000-of-00001.json", "train", "retro"),
-    # ("data/presto_data/retro/test-00000-of-00001.json", "test", "retro"),
-    ("data/presto_data/reagent/train-00000-of-00001.json", "train", "reagent"),
-    ("data/presto_data/reagent/test-00000-of-00001.json", "test", "reagent"),
-    ("data/presto_data/reagent/dev-00000-of-00001.json", "valid", "reagent"),
-    ("data/presto_data/catalyst/train-00000-of-00001.json", "train", "catalyst"),
-    ("data/presto_data/catalyst/test-00000-of-00001.json", "test", "catalyst"),
-    ("data/presto_data/catalyst/dev-00000-of-00001.json", "valid", "catalyst"),
-    ("data/presto_data/solvent/train-00000-of-00001.json", "train", "solvent"),
-    ("data/presto_data/solvent/test-00000-of-00001.json", "test", "solvent"),
-    ("data/presto_data/solvent/dev-00000-of-00001.json", "valid", "solvent"),
+    # ("data/presto_data/forward/trainjson", "train", "forward"),
+    # ("data/presto_data/forward/test.json", "test", "forward"),
+    # ("data/presto_data/retro/train.json", "train", "retro"),
+    # ("data/presto_data/retro/test.json", "test", "retro"),
+    # ("data/presto_data/reagent/train.json", "train", "reagent"),
+    # ("data/presto_data/reagent/test.json", "test", "reagent"),
+    # ("data/presto_data/reagent/valid.json", "valid", "reagent"),
+    ("data/presto_data/catalyst/train.json", "train", "catalyst"),
+    ("data/presto_data/catalyst/test.json", "test", "catalyst"),
+    ("data/presto_data/catalyst/valid.json", "valid", "catalyst"),
+    ("data/presto_data/solvent/train.json", "train", "solvent"),
+    ("data/presto_data/solvent/test.json", "test", "solvent"),
+    ("data/presto_data/solvent/valid.json", "valid", "solvent"),
 ]
 
 # models = ["gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"]
@@ -219,6 +227,22 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
             reagents_subs = [subs[i] for i in reagents_fp_nonzero]
             reagents_subs_str = "\n".join(reagents_subs)
             data_dict["exist_reagents"] = reagents_subs_str
+        if d.get("catalyst"):
+            data_dict["catalyst"] = d["catalyst"]
+            catalyst_mol = Chem.MolFromSmiles(d["catalyst"])
+            catalyst_fp = list(MACCSkeys.GenMACCSKeys(catalyst_mol))
+            catalyst_fp_nonzero = [i for i, v in enumerate(catalyst_fp) if v]
+            catalyst_subs = [subs[i] for i in catalyst_fp_nonzero]
+            catalyst_subs_str = "\n".join(catalyst_subs)
+            data_dict["exist_catalyst"] = catalyst_subs_str
+        if d.get("solvent"):
+            data_dict["solvent"] = d["solvent"]
+            solvent_mol = Chem.MolFromSmiles(d["solvent"])
+            solvent_fp = list(MACCSkeys.GenMACCSKeys(solvent_mol))
+            solvent_fp_nonzero = [i for i, v in enumerate(solvent_fp) if v]
+            solvent_subs = [subs[i] for i in solvent_fp_nonzero]
+            solvent_subs_str = "\n".join(solvent_subs)
+            data_dict["exist_solvent"] = solvent_subs_str
         if d.get("product"):
             data_dict["product"] = d["product"]
             products_mol = Chem.MolFromSmiles(d["product"])

@@ -319,6 +319,7 @@ class Stage2DM(LightningDataModule):
         default_values = ["False", "False", "False"]
         default_bools = [str2bool(val) for val in default_values]
         parser.add_argument('--use_hards', nargs='+', default=default_bools, type=str2bool, help='use hard dataset, [train - True/False, val - True/False, test - True/False]. Example: --use_hards False False False')
+        parser.add_argument('--n_test_samples', type=int, default=99999999)
     
         return parent_parser
     

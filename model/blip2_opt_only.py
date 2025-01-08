@@ -181,7 +181,7 @@ class Blip2OPTOnly(Blip2Base):
 
         ## fixme: this is different from the original BLIP2
         self.eos_token_id = self.opt_tokenizer(
-            "\n", add_special_tokens=False
+            "</s>", add_special_tokens=False
         ).input_ids[0]
 
         ## fixme: no prompt yet
@@ -266,7 +266,7 @@ class Blip2OPTOnly(Blip2Base):
             num_return_sequences=num_captions,
             # use_cache=False,
         )
-        output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=True)
+        output_text = self.opt_tokenizer.batch_decode(outputs, skip_special_tokens=False)
         
         output_text = [text.strip() for text in output_text]
         return output_text

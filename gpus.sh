@@ -211,4 +211,11 @@
 
 # String only training
 # python stage2.py --root "biot5_plus_reaction_tasks_stringonly" --opt_model only --devices "1,2,3,4,5,6,7" --filename "ft_reaction_stringonly" --max_epochs 80 --mode ft --prompt "[START_I_SMILES]{}[END_I_SMILES]" --llm_tune lora --inference_batch_size 8 --peft_config lora_config.json --caption_eval_epoch 1 --batch_size 8 --accumulate_grad_batches 1 --text_max_len 700 --max_len 1000
-python stage2.py --root "biot5_plus_cot_reaction_tasks_stringonly" --opt_model only --devices "1,2,3,4,5,6,7" --filename "ft_reaction_cot_stringonly" --max_epochs 80 --mode ft --prompt "[START_I_SMILES]{}[END_I_SMILES]" --llm_tune lora --inference_batch_size 8 --peft_config lora_config.json --caption_eval_epoch 1 --batch_size 8 --accumulate_grad_batches 1 --text_max_len 700 --max_len 1300
+# python stage2.py --root "biot5_plus_cot_reaction_tasks_stringonly" --opt_model only --devices "1,2,3,4,5,6,7" --filename "ft_reaction_cot_stringonly" --max_epochs 80 --mode ft --prompt "[START_I_SMILES]{}[END_I_SMILES]" --llm_tune lora --inference_batch_size 8 --peft_config lora_config.json --caption_eval_epoch 1 --batch_size 8 --accumulate_grad_batches 1 --text_max_len 700 --max_len 1300
+
+# Presto train, string only
+# python stage2.py --root "presto_reaction_tasks_stringonly" --opt_model only --devices "1,2,3,4,5,6,7" --filename "ft_presto_stringonly" --max_epochs 40 --mode ft --n_test_samples 100 --prompt "[START_I_SMILES]{}[END_I_SMILES]" --llm_tune lora --inference_batch_size 8 --peft_config lora_config.json --caption_eval_epoch 1 --batch_size 8 --accumulate_grad_batches 1 --text_max_len 700 --max_len 900
+python stage2.py --root "presto_reaction_tasks_cot_stringonly" --opt_model only --devices "1,2,3,4,5,6,7" --filename "ft_presto_cot_stringonly" --max_epochs 40 --mode ft --n_test_samples 100 --llm_tune lora --inference_batch_size 8 --peft_config lora_config.json --caption_eval_epoch 1 --batch_size 8 --accumulate_grad_batches 1 --text_max_len 700 --max_len 1000
+
+# Presto eval, string only
+# python stage2.py --root "presto_reaction_tasks_stringonly" --opt_model only --devices "1,2,3,4,5,6,7" --filename "ft_presto_stringonly_full_eval" --max_epochs 40 --mode eval --init_checkpoint all_checkpoints/ft_presto_cot_stringonly/epoch=08.ckpt --n_test_samples 99999999 --prompt "[START_I_SMILES]{}[END_I_SMILES]" --llm_tune lora --inference_batch_size 8 --peft_config lora_config.json --caption_eval_epoch 1 --batch_size 8 --accumulate_grad_batches 1 --text_max_len 700 --max_len 900

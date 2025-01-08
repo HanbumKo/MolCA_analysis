@@ -28,28 +28,27 @@ client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 
 
-# jsonl_files = glob("CoT_experiments/data/openai_batch/requests/example_*.jsonl")[:3]
 jsonl_files = [
-    # "CoT_experiments/data/openai_batch/requests/forward_test_batch_0.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_0.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_1.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_2.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_3.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_4.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_5.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_6.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_7.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/forward_train_batch_8.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_test_batch_0.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_0.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_1.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_2.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_3.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_4.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_5.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_6.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_7.jsonl",
-    # "CoT_experiments/data/openai_batch/requests/retro_train_batch_8.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_test_batch_0.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_0.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_1.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_2.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_3.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_4.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_5.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_6.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_7.jsonl",
+    "CoT_experiments/data/openai_batch/requests/forward_train_batch_8.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_test_batch_0.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_0.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_1.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_2.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_3.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_4.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_5.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_6.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_7.jsonl",
+    "CoT_experiments/data/openai_batch/requests/retro_train_batch_8.jsonl",
     "CoT_experiments/data/openai_batch/requests/reagent_test_batch_0.jsonl",
     "CoT_experiments/data/openai_batch/requests/reagent_valid_batch_0.jsonl",
     "CoT_experiments/data/openai_batch/requests/reagent_train_batch_0.jsonl",
@@ -110,32 +109,42 @@ for jsonl_file in jsonl_files:
 
 
 # Save to data
-for task_name in ["forward", "retro", "reagent"]:
-    jsonl_files = glob(f"CoT_experiments/data/openai_batch/responses/{task_name}_batch_*.jsonl")
-    reasoning_texts = []
-    for jsonl_file in jsonl_files:
-        with open(jsonl_file, "r") as f:
-            # Load the jsonl file
-            data = f.readlines()
-            data = [json.loads(d) for d in data]
-        for d in data:
-            reasoning_texts.append(data[0]['response']['body']['choices'][0]['message']['content'])
+for task_name in ["forward", "retro", "reagent", "catalyst", "solvent"]:
+    for split in ["train", "valid", "test"]:
+        jsonl_files = sorted(glob(f"CoT_experiments/data/openai_batch/responses/{task_name}_{split}_batch_*.jsonl"))
+        if task_name == "forward" and split == "valid":
+            jsonl_files = sorted(glob(f"CoT_experiments/data/openai_batch/responses/{task_name}_train_batch_*.jsonl"))
+        if task_name == "retro" and split == "valid":
+            jsonl_files = sorted(glob(f"CoT_experiments/data/openai_batch/responses/{task_name}_train_batch_*.jsonl"))
+        reasoning_texts = []
+        for jsonl_file in jsonl_files:
+            with open(jsonl_file, "r") as f:
+                # Load the jsonl file
+                data = f.readlines()
+                data = [json.loads(d) for d in data]
+            for i, d in enumerate(data):
+                reasoning_texts.append(data[i]['response']['body']['choices'][0]['message']['content'])
 
-    if task_name == "forward":
-        file_name = "data/biot5_plus_data/tasks_plus/task214_forward_reaction_prediction_molinst_mol_train.json"
-    elif task_name == "retro":
-        file_name = "data/biot5_plus_data/tasks_plus/task217_retrosynthesis_molinst_mol_train.json"
-    elif task_name == "reagent":
-        file_name = "data/biot5_plus_data/tasks_plus/task211_reagent_prediction_molinst_mol_train.json"
-    with open(file_name, 'r') as f:
-        data = json.load(f)
-    for d, reasoning_text in zip(data['Instances'], reasoning_texts):
-        d['reasoning'] = reasoning_text
+        file_name = f"data/presto_data/{task_name}/{split}.json"
+        with open(file_name, 'r') as f:
+            data = json.load(f)
+        
+        if task_name == "forward" and split == "train":
+            reasoning_texts = reasoning_texts[:-100]
+        elif task_name == "retro" and split == "train":
+            reasoning_texts = reasoning_texts[:-100]
+        elif task_name == "forward" and split == "valid":
+            reasoning_texts = reasoning_texts[-100:]
+        elif task_name == "retro" and split == "valid":
+            reasoning_texts = reasoning_texts[-100:]
 
-    data_name = file_name.split("/")[-1]
-    save_path = f"CoT_experiments/data/biot5_plus_reasoning_data/{data_name}"
-    with open(save_path, 'w') as f:
-        json.dump(data, f, indent=4)
+        for d, reasoning_text in zip(data, reasoning_texts):
+            d['reasoning'] = reasoning_text
+
+        data_name = file_name.split("/")[-1]
+        save_path = f"CoT_experiments/data/presto_reasoning_data/{task_name}/{data_name}"
+        with open(save_path, 'w') as f:
+            json.dump(data, f, indent=4)
 
 
 

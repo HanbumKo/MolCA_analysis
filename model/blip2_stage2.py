@@ -12,6 +12,7 @@ import json
 import torch.distributed as dist
 from peft import LoraConfig, TaskType
 from model.help_funcs import caption_evaluate, regression_evaluate, classification_evaluate, calculate_smiles_metrics, AttrDict
+from model.evaluator import MoleculeSMILESEvaluator
 from transformers import Adafactor
 from collections import defaultdict
 
@@ -88,6 +89,7 @@ class Blip2Stage2(pl.LightningModule):
         else:
             raise NotImplementedError()
         self.tokenizer = self.blip2opt.init_tokenizer()
+        self.evaluator = MoleculeSMILESEvaluator()
         self.save_hyperparameters(args)
 
     def load_from_stage1_checkpoint(self, path):
@@ -240,9 +242,9 @@ class Blip2Stage2(pl.LightningModule):
                 max_length=self.max_len,
                 min_length=self.min_len
             )
-            self.list_predictions_train.append(predictions)
-            self.list_targets_train.append(texts)
-            self.list_tasks_train.append(tasks)
+            self.list_predictions_val.append(predictions)
+            self.list_targets_val.append(texts)
+            self.list_tasks_val.append(tasks)
         elif dataloader_idx == 3:
             if (self.current_epoch+1) % self.caption_eval_epoch != 0:
                 return 
@@ -256,9 +258,9 @@ class Blip2Stage2(pl.LightningModule):
                 max_length=self.max_len,
                 min_length=self.min_len
             )
-            self.list_predictions_val.append(predictions)
-            self.list_targets_val.append(texts)
-            self.list_tasks_val.append(tasks)
+            self.list_predictions_train.append(predictions)
+            self.list_targets_train.append(texts)
+            self.list_tasks_train.append(tasks)
         else:
             raise NotImplementedError
     
@@ -323,136 +325,42 @@ class Blip2Stage2(pl.LightningModule):
             all_predictions = [i for ii in all_predictions for i in ii]
             all_targets = [i for ii in all_targets for i in ii]
             all_tasks = [i for ii in all_tasks for i in ii]
+            all_predictions_val = [i for ii in all_predictions_val for i in ii]
+            all_targets_val = [i for ii in all_targets_val for i in ii]
+            all_tasks_val = [i for ii in all_tasks_val for i in ii]
             task_names = list(set(all_tasks))
+            
+            # Save results and log test set metrics
             all_predictions_dict = defaultdict(list)
             for p, t, task in zip(all_predictions, all_targets, all_tasks):
                 all_predictions_dict[task].append(
-                    {'prediction': p, 'target': t.replace("SPL1T-TH1S-Pl3A5E", "").replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "")}
+                    {
+                        'prediction': p.split("Answer:")[-1].replace("Answer:", "").replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "").replace("<pad>", "").replace("</s>", "").strip(),
+                        'target': t.split("Answer:")[-1].replace("SPL1T-TH1S-Pl3A5E", "").replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "").replace("Answer: ", "").replace("</s>", "").strip(),
+                        'reasoning_model_generated': self.extract_reasoning_content(p).strip(),
+                        'reasoning_ground_truth': self.extract_reasoning_content(t).strip(),
+                    }
                 )
             if len(all_predictions) > 0:
                 self.save_predictions(all_predictions_dict, filename=f'predictions_epoch{self.current_epoch}_test.json')
                 for task, p_t in all_predictions_dict.items():
-                    if task == "chebi20_text2mol":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
-                        for key, value in result_dict.items():
-                            self.log(key+"_chebi20_text2mol_test", value, sync_dist=False)
-                    elif task == "chebi20_mol2text":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                            caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
-                        self.log("bleu2_chebi20_mol2text_test", bleu2, sync_dist=False)
-                        self.log("bleu4_chebi20_mol2text_test", bleu4, sync_dist=False)
-                        self.log("rouge_1_chebi20_mol2text_test", rouge_1, sync_dist=False)
-                        self.log("rouge_2_chebi20_mol2text_test", rouge_2, sync_dist=False)
-                        self.log("rouge_l_chebi20_mol2text_test", rouge_l, sync_dist=False)
-                        self.log("meteor_score_chebi20_mol2text_test", meteor_score, sync_dist=False)
-                    elif task == "bbbp":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = classification_evaluate(predictions, targets)
-                        for key, value in result_dict.items():
-                            self.log(key+"_bbbp_test", value, sync_dist=False)
-                    elif task == "hiv":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = classification_evaluate(predictions, targets)
-                        for key, value in result_dict.items():
-                            self.log(key+"_hiv_test", value, sync_dist=False)
-                    elif task == "bace":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = classification_evaluate(predictions, targets)
-                        for key, value in result_dict.items():
-                            self.log(key+"_bace_test", value, sync_dist=False)
-                    elif task == "clintox":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = classification_evaluate(predictions, targets)
-                        for key, value in result_dict.items():
-                            self.log(key+"_clintox_test", value, sync_dist=False)
-                    elif task == "pubchem_mol2text":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                            caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
-                        self.log("bleu2_pubchem_mol2text_test", bleu2, sync_dist=False)
-                        self.log("bleu4_pubchem_mol2text_test", bleu4, sync_dist=False)
-                        self.log("rouge_1_pubchem_mol2text_test", rouge_1, sync_dist=False)
-                        self.log("rouge_2_pubchem_mol2text_test", rouge_2, sync_dist=False)
-                        self.log("rouge_l_pubchem_mol2text_test", rouge_l, sync_dist=False)
-                        self.log("meteor_score_pubchem_mol2text_test", meteor_score, sync_dist=False)
-                    elif task == "pubchem_text2mol":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
-                        for key, value in result_dict.items():
-                            self.log(key+"_pubchem_text2mol_test", value, sync_dist=False)
-                    elif task == "pretrain_captioning":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
-                            caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
-                        self.log("bleu2_chebi20_mol2text_test", bleu2, sync_dist=False)
-                        self.log("bleu4_chebi20_mol2text_test", bleu4, sync_dist=False)
-                        self.log("rouge_1_chebi20_mol2text_test", rouge_1, sync_dist=False)
-                        self.log("rouge_2_chebi20_mol2text_test", rouge_2, sync_dist=False)
-                        self.log("rouge_l_chebi20_mol2text_test", rouge_l, sync_dist=False)
-                        self.log("meteor_score_chebi20_mol2text_test", meteor_score, sync_dist=False)
-                    elif task == "molinst_property":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        mae, mse, rmse, validity = regression_evaluate(predictions, targets)
-                        self.log("mae_molinst_property_test", mae, sync_dist=False)
-                        self.log("mse_molinst_property_test", mse, sync_dist=False)
-                        self.log("rmse_molinst_property_test", rmse, sync_dist=False)
-                        self.log("validity_molinst_property_test", validity, sync_dist=False)
-                    elif task == "homo_reg":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        mae, mse, rmse, validity = regression_evaluate(predictions, targets)
-                        self.log("mae_homo_test", mae, sync_dist=False)
-                        self.log("mse_homo_test", mse, sync_dist=False)
-                        self.log("rmse_homo_test", rmse, sync_dist=False)
-                        self.log("validity_homo_test", validity, sync_dist=False)
-                    elif task == "lumo_reg":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        mae, mse, rmse, validity = regression_evaluate(predictions, targets)
-                        self.log("mae_lumo_test", mae, sync_dist=False)
-                        self.log("mse_lumo_test", mse, sync_dist=False)
-                        self.log("rmse_lumo_test", rmse, sync_dist=False)
-                        self.log("validity_lumo_test", validity, sync_dist=False)
-                    elif task == "gap_reg":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        mae, mse, rmse, validity = regression_evaluate(predictions, targets)
-                        self.log("mae_gap_test", mae, sync_dist=False)
-                        self.log("mse_gap_test", mse, sync_dist=False)
-                        self.log("rmse_gap_test", rmse, sync_dist=False)
-                        self.log("validity_gap_test", validity, sync_dist=False)
-                    elif task == "reagent":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
-                        for key, value in result_dict.items():
-                            self.log(key+"_reagent_test", value, sync_dist=False)
-                    elif task == "forward":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
-                        for key, value in result_dict.items():
-                            self.log(key+"_forward_test", value, sync_dist=False)
-                    elif task == "retro":
-                        predictions = [i['prediction'] for i in p_t]
-                        targets = [i['target'] for i in p_t]
-                        result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
-                        for key, value in result_dict.items():
-                            self.log(key+"_retro_test", value, sync_dist=False)
-                    else:
-                        raise NotImplementedError()
+                    self.log_metrics(all_predictions_dict, "test")
+            
+            # Save results and log validation set metrics
+            all_predictions_dict = defaultdict(list)
+            for p, t, task in zip(all_predictions_val, all_targets_val, all_tasks_val):
+                all_predictions_dict[task].append(
+                    {
+                        'prediction': p.split("Answer:")[-1].replace("Answer:", "").replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "").replace("<pad>", "").replace("</s>", "").strip(),
+                        'target': t.split("Answer:")[-1].replace("SPL1T-TH1S-Pl3A5E", "").replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "").replace("Answer: ", "").replace("</s>", "").strip(),
+                        'reasoning_model_generated': self.extract_reasoning_content(p).strip(),
+                        'reasoning_ground_truth': self.extract_reasoning_content(t).strip(),
+                    }
+                )
+            if len(all_predictions_val) > 0:
+                self.save_predictions(all_predictions_dict, filename=f'predictions_epoch{self.current_epoch}_valid.json')
+                for task, p_t in all_predictions_dict.items():
+                    self.log_metrics(all_predictions_dict, "valid")
 
     def training_step(self, batch, batch_idx):
         if self.scheduler:
@@ -550,4 +458,161 @@ class Blip2Stage2(pl.LightningModule):
         parser.add_argument('--query_index', type=int, default=-1)
         return parent_parser
 
+    def log_metrics(self, all_predictions_dict, split):
+        for task, p_t in all_predictions_dict.items():
+            if task == "chebi20_text2mol":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
+                for key, value in result_dict.items():
+                    self.log(key+f"_chebi20_text2mol_{split}", value, sync_dist=False)
+            elif task == "chebi20_mol2text":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                    caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
+                self.log(f"bleu2_chebi20_mol2text_{split}", bleu2, sync_dist=False)
+                self.log(f"bleu4_chebi20_mol2text_{split}", bleu4, sync_dist=False)
+                self.log(f"rouge_1_chebi20_mol2text_{split}", rouge_1, sync_dist=False)
+                self.log(f"rouge_2_chebi20_mol2text_{split}", rouge_2, sync_dist=False)
+                self.log(f"rouge_l_chebi20_mol2text_{split}", rouge_l, sync_dist=False)
+                self.log(f"meteor_score_chebi20_mol2text_{split}", meteor_score, sync_dist=False)
+            elif task == "bbbp":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                result_dict = classification_evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_bbbp_{split}", value, sync_dist=False)
+            elif task == "hiv":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                result_dict = classification_evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_hiv_{split}", value, sync_dist=False)
+            elif task == "bace":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                result_dict = classification_evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_bace_{split}", value, sync_dist=False)
+            elif task == "clintox":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                result_dict = classification_evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_clintox_{split}", value, sync_dist=False)
+            elif task == "pubchem_mol2text":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                    caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
+                self.log(f"bleu2_pubchem_mol2text_{split}", bleu2, sync_dist=False)
+                self.log(f"bleu4_pubchem_mol2text_{split}", bleu4, sync_dist=False)
+                self.log(f"rouge_1_pubchem_mol2text_{split}", rouge_1, sync_dist=False)
+                self.log(f"rouge_2_pubchem_mol2text_{split}", rouge_2, sync_dist=False)
+                self.log(f"rouge_l_pubchem_mol2text_{split}", rouge_l, sync_dist=False)
+                self.log(f"meteor_score_pubchem_mol2text_{split}", meteor_score, sync_dist=False)
+            elif task == "pubchem_text2mol":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
+                for key, value in result_dict.items():
+                    self.log(key+f"_pubchem_text2mol_{split}", value, sync_dist=False)
+            elif task == "pretrain_captioning":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                bleu2, bleu4, rouge_1, rouge_2, rouge_l, meteor_score = \
+                    caption_evaluate(predictions, targets, self.tokenizer, self.max_len * 2) 
+                self.log(f"bleu2_chebi20_mol2text_{split}", bleu2, sync_dist=False)
+                self.log(f"bleu4_chebi20_mol2text_{split}", bleu4, sync_dist=False)
+                self.log(f"rouge_1_chebi20_mol2text_{split}", rouge_1, sync_dist=False)
+                self.log(f"rouge_2_chebi20_mol2text_{split}", rouge_2, sync_dist=False)
+                self.log(f"rouge_l_chebi20_mol2text_{split}", rouge_l, sync_dist=False)
+                self.log(f"meteor_score_chebi20_mol2text_{split}", meteor_score, sync_dist=False)
+            elif task == "molinst_property":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                mae, mse, rmse, validity = regression_evaluate(predictions, targets)
+                self.log(f"mae_molinst_property_{split}", mae, sync_dist=False)
+                self.log(f"mse_molinst_property_{split}", mse, sync_dist=False)
+                self.log(f"rmse_molinst_property_{split}", rmse, sync_dist=False)
+                self.log(f"validity_molinst_property_{split}", validity, sync_dist=False)
+            elif task == "homo_reg":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                mae, mse, rmse, validity = regression_evaluate(predictions, targets)
+                self.log(f"mae_homo_{split}", mae, sync_dist=False)
+                self.log(f"mse_homo_{split}", mse, sync_dist=False)
+                self.log(f"rmse_homo_{split}", rmse, sync_dist=False)
+                self.log(f"validity_homo_{split}", validity, sync_dist=False)
+            elif task == "lumo_reg":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                mae, mse, rmse, validity = regression_evaluate(predictions, targets)
+                self.log(f"mae_lumo_{split}", mae, sync_dist=False)
+                self.log(f"mse_lumo_{split}", mse, sync_dist=False)
+                self.log(f"rmse_lumo_{split}", rmse, sync_dist=False)
+                self.log(f"validity_lumo_{split}", validity, sync_dist=False)
+            elif task == "gap_reg":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                mae, mse, rmse, validity = regression_evaluate(predictions, targets)
+                self.log(f"mae_gap_{split}", mae, sync_dist=False)
+                self.log(f"mse_gap_{split}", mse, sync_dist=False)
+                self.log(f"rmse_gap_{split}", rmse, sync_dist=False)
+                self.log(f"validity_gap_{split}", validity, sync_dist=False)
+            elif task == "forward":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                # result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint'))
+                result_dict = self.evaluator.evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_forward_{split}", value, sync_dist=False)
+            elif task == "retro":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                # result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                result_dict = self.evaluator.evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_retro_{split}", value, sync_dist=False)
+            elif task == "reagent":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                # result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                result_dict = self.evaluator.evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_reagent_{split}", value, sync_dist=False)
+            elif task == "catalyst":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                # result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                result_dict = self.evaluator.evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_catalyst_{split}", value, sync_dist=False)
+            elif task == "solvent":
+                predictions = [i['prediction'] for i in p_t]
+                targets = [i['target'] for i in p_t]
+                # result_dict = calculate_smiles_metrics(predictions, targets, metrics=('exact_match', 'fingerprint', 'multiple_match'))
+                result_dict = self.evaluator.evaluate(predictions, targets)
+                for key, value in result_dict.items():
+                    self.log(key+f"_solvent_{split}", value, sync_dist=False)
+            else:
+                raise NotImplementedError()
 
+    def extract_reasoning_content(self, text):
+        try:
+            start_index = text.index("<work>") + len("<work>")
+            end_index = text.index("</work>")
+            return text[start_index:end_index].strip()
+        except ValueError:
+            # No "<work>" or "</work>" found
+            return ""
+
+    def extract_non_reasoning_content(self, text):
+        try:
+            start_index = text.index("<work>")
+            end_index = text.index("</work>") + len("</work>")
+            return (text[:start_index] + text[end_index:]).strip()
+        except ValueError:
+            # No "<work>" or "</work>" found
+            return text.strip()

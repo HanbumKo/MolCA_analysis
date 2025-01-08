@@ -18,6 +18,8 @@ from data_provider.biot5_property_regression_dm import BioT5PropertyRegressionDM
 from data_provider.biot5_reaction_tasks_dm import BioT5ReactionDM
 from data_provider.biot5_reaction_tasks_stringonly_dm import BioT5ReactionStringOnlyDM
 from data_provider.biot5_reaction_tasks_cot_stringonly_dm import BioT5ReactionCoTStringOnlyDM
+from data_provider.presto_reaction_tasks_stringonly_dm import PrestoStringOnlyDM
+from data_provider.presto_reaction_tasks_cot_stringonly_dm import PrestoCoTStringOnlyDM
 from model.blip2_stage2 import Blip2Stage2
 
 # torch.set_default_dtype(torch.float16)
@@ -70,7 +72,11 @@ def main(args):
         dm = IupacDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         monitor = "meteor_score_val"
     else:
-        if args.root == "biot5_plus_property_regression":
+        if args.root == "presto_reaction_tasks_stringonly":
+            dm = PrestoStringOnlyDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root == "presto_reaction_tasks_cot_stringonly":
+            dm = PrestoCoTStringOnlyDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
+        elif args.root == "biot5_plus_property_regression":
             dm = BioT5PropertyRegressionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
         elif args.root == "biot5_plus_reaction_tasks":
             dm = BioT5ReactionDM(args.mode, args.num_workers, args.batch_size, args.root, args.text_max_len, tokenizer, args)
@@ -111,7 +117,7 @@ def main(args):
                                          filename='{epoch:02d}',
                                          every_n_epochs=args.caption_eval_epoch, 
                                          save_last=True, 
-                                         save_top_k=0,
+                                         save_top_k=-1,
                                         #  monitor=monitor,
                                         #  monitor='val molecule loss/dataloader_idx_0',
                                          save_on_train_epoch_end=False))
