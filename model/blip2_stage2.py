@@ -80,8 +80,10 @@ class Blip2Stage2(pl.LightningModule):
         self.is_regression = args.root.lower().find('property_prediction') >= 0
         if args.opt_model.find('galactica') >= 0:
             self.blip2opt = Blip2OPT(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
-        elif args.opt_model.find('only') >= 0:
-            self.blip2opt = Blip2OPTOnly(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
+        elif args.opt_model.find('only-1.3b') >= 0:
+            self.blip2opt = Blip2OPTOnly(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, "facebook/galactica-1.3b", args.prompt, args)
+        elif args.opt_model.find('only-6.7b') >= 0:
+            self.blip2opt = Blip2OPTOnly(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, "facebook/galactica-6.7b", args.prompt, args)
         elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
             self.blip2opt = Blip2Llama(args.bert_name, args.gin_num_layers, args.gin_hidden_dim, args.drop_ratio, args.tune_gnn, args.num_query_token, args.cross_attention_freq, args.llm_tune, args.peft_dir, args.opt_model, args.prompt, args)
         elif args.opt_model.find('t5') >= 0:

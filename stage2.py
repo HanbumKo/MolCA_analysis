@@ -61,7 +61,7 @@ def main(args):
 
     print('total params:', sum(p.numel() for p in model.parameters()))
 
-    if args.opt_model.find('galactica') >= 0 or args.opt_model.find('t5') >= 0 or args.opt_model == 'only':
+    if args.opt_model.find('galactica') >= 0 or args.opt_model.find('t5') >= 0 or args.opt_model.find('only') >= 0:
         tokenizer = model.blip2opt.opt_tokenizer
     elif args.opt_model.find('llama') >= 0 or args.opt_model.find('vicuna') >= 0:
         tokenizer = model.blip2opt.llm_tokenizer

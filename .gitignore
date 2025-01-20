@@ -14,3 +14,6 @@ CoT_experiments/data/
 CoT_experiments/results/
 .vscode/
 CoT_experiments/keys.txt
+debug.py
+CoT_experiments/PRESTO/
+CoT_experiments/llasmol/

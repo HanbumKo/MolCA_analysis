@@ -132,7 +132,6 @@ class Blip2OPTOnly(Blip2Base):
 
         self.tune_gnn = tune_gnn        
         self.num_query_token = num_query_token
-        opt_model = "facebook/galactica-1.3b"
         ## initialize opt model
         self.opt_tokenizer = AutoTokenizer.from_pretrained(opt_model, use_fast=False, padding_side='right')
         self.opt_tokenizer.add_special_tokens({'pad_token': '<pad>'})

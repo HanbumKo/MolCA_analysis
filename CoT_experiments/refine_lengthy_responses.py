@@ -62,17 +62,18 @@ jsonl_files = [
     # "CoT_experiments/data/openai_batch/responses/reagent_train_batch_0.jsonl",
     # "CoT_experiments/data/openai_batch/responses/reagent_train_batch_1.jsonl",
     # "CoT_experiments/data/openai_batch/responses/reagent_train_batch_2.jsonl",
-    "CoT_experiments/data/openai_batch/responses/reagent_train_batch_3.jsonl",
-    "CoT_experiments/data/openai_batch/responses/catalyst_test_batch_0.jsonl",
-    "CoT_experiments/data/openai_batch/responses/catalyst_valid_batch_0.jsonl",
-    "CoT_experiments/data/openai_batch/responses/catalyst_train_batch_0.jsonl",
-    "CoT_experiments/data/openai_batch/responses/solvent_test_batch_0.jsonl",
-    "CoT_experiments/data/openai_batch/responses/solvent_valid_batch_0.jsonl",
-    "CoT_experiments/data/openai_batch/responses/solvent_train_batch_0.jsonl",
-    "CoT_experiments/data/openai_batch/responses/solvent_train_batch_1.jsonl",
-    "CoT_experiments/data/openai_batch/responses/solvent_train_batch_2.jsonl",
-    "CoT_experiments/data/openai_batch/responses/solvent_train_batch_3.jsonl",
-    "CoT_experiments/data/openai_batch/responses/solvent_train_batch_4.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/reagent_train_batch_3.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/catalyst_test_batch_0.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/catalyst_valid_batch_0.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/catalyst_train_batch_0.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/solvent_test_batch_0.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/solvent_valid_batch_0.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/solvent_train_batch_0.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/solvent_train_batch_1.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/solvent_train_batch_2.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/solvent_train_batch_3.jsonl",
+    # "CoT_experiments/data/openai_batch/responses/solvent_train_batch_4.jsonl",
+    "CoT_experiments/data/openai_batch/responses/gpt-4o-2024-11-20_test.jsonl",
 ]
 
 
@@ -88,7 +89,8 @@ for jsonl_file in jsonl_files:
         finish_reason = d['response']['body']['choices'][0]['finish_reason']
         if finish_reason == "length":
             request_body = request_data[i]['body']
-            request_body["frequency_penalty"] = 0.1
+            # request_body["frequency_penalty"] = 0.1
+            request_body['max_tokens'] = 1500
             new_result, new_reason, new_response = get_openai_output(request_body)
             print()
             print("="*100)

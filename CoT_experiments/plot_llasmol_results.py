@@ -20,7 +20,8 @@ task_names = ["forward", "retro", "reagent", "catalyst", "solvent"]
 # task_names = ["forward"]
 # use_reasoning_texts = ["w/o reasoning instruction", "w/ reasoning instruction"]
 # reasoning = ["no", "generated", "manual"]
-reasoning = ["no", "generated", "zeroshotcot"]
+# reasoning = ["no", "generated", "zeroshotcot"]
+reasoning = ["no", "generated"]
 n_shot_texts = ["0-shot", "1-shot", "2-shot", "3-shot", "4-shot", "5-shot", "6-shot", "7-shot"]
 seed_texts = ["seed0", "seed1", "seed2", "seed3"]
 metrics = ["exact_match", "bleu", "levenshtein", "rdk_sims", "maccs_sims", "morgan_sims", "validity"]
@@ -45,7 +46,7 @@ metric_to_name = {
 }
 
 # for model in ["gpt-4o-mini", "gpt-3.5-turbo", "gpt-4o-2024-11-20"]:
-for model in ["gpt-4o-2024-11-20"]:
+for model in ["llasmol"]:
 # for model in ["llasmol"]:
     with open(f"CoT_experiments/results/cot_prompt_test/eval_results/{model}.json", "r") as f:
         d = json.load(f)
@@ -127,9 +128,14 @@ for model in ["gpt-4o-2024-11-20"]:
                 ax.set_title(metric_to_name[metric])
 
     # 범례는 맨 위 왼쪽 subplot에 직접 달 수도 있고(fig.legend 등을 통해 전체로 뺄 수도 있음)
+    # axes[0, 0].legend(
+    #     [bp['boxes'][0], bp['boxes'][1], bp['boxes'][2]],
+    #     ["w/o reasoning", "w/ reasoning(generated)", "w/ reasoning(zero-shot-cot)"],
+    #     loc="upper left"
+    # )
     axes[0, 0].legend(
-        [bp['boxes'][0], bp['boxes'][1], bp['boxes'][2]],
-        ["Few-shot", "Few-shot-CoT(Ours)", "Zero-shot-CoT"],
+        [bp['boxes'][0], bp['boxes'][1]],
+        ["Few-shot", "Few-shot-CoT(Ours)"],
         loc="upper left"
     )
 
@@ -156,11 +162,11 @@ for model in ["gpt-4o-2024-11-20"]:
             "marker": "o", 
             "label": "Few-shot-CoT(Ours)"
         },
-        "zeroshotcot": {
-            "color": "#2ca02c",
-            "marker": "o",
-            "label": "Zero-shot-CoT"
-        }
+        # "zeroshotcot": {
+        #     "color": "#2ca02c",
+        #     "marker": "o",
+        #     "label": "w/ reasoning(zero-shot-cot)"
+        # }
     }
 
     for i, task in enumerate(task_names):
@@ -210,8 +216,8 @@ for model in ["gpt-4o-2024-11-20"]:
                 marker=reasoning_styles["no"]["marker"], label="Few-shot"),
         plt.Line2D([0], [0], color=reasoning_styles["generated"]["color"],
                 marker=reasoning_styles["generated"]["marker"], label="Few-shot-CoT(Ours)"),
-        plt.Line2D([0], [0], color=reasoning_styles["zeroshotcot"]["color"],
-                marker=reasoning_styles["zeroshotcot"]["marker"], label="Zero-shot-CoT")
+        # plt.Line2D([0], [0], color=reasoning_styles["zeroshotcot"]["color"],
+        #         marker=reasoning_styles["zeroshotcot"]["marker"], label="w/ reasoning(zero-shot-cot)")
     ]
     # fig.legend(handles=lines, loc='upper center', ncol=2)
     axes[0, 0].legend(handles=lines, loc='upper left')
