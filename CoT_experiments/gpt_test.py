@@ -407,7 +407,7 @@ else:
 
 
 
-"""
+
 # 2. Create OpenAI batch API requests
 all_combinations = []
 for use_react_doc in [True, False]:
@@ -465,7 +465,7 @@ with open(f"CoT_experiments/data/openai_batch/requests/{model}_test.jsonl", "w")
         f.write(json.dumps(request_dict) + "\n")
 ############################################################################################################
 
-
+"""
 # 3. Run OpenAI batch API requests
 jsonl_files = [
     # "CoT_experiments/data/openai_batch/requests/gpt-3.5-turbo_reasoninggenerated_test.jsonl",

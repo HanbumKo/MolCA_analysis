@@ -39,11 +39,12 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
     text_len_dict = {0: ".", 1: " in a single paragraph.", 2: " in two paragraphs."}
 
     if task_name == "forward":
-        system_message = f"You are a chemical reaction description generator, tasked with creating a step-by-step explanation of the process involved in a forward reaction prediction task. This task involves predicting possible product from precursor composed of reactant and reagent."
+        system_message = f"You are a chemical reaction description generator, tasked with creating a step-by-step explanation of the process involved in a forward reaction prediction task. This task involves predicting possible product from precursors composed of reactant and reagent."
         if use_step_inst:
             system_message += f""" Specifically, you should generate the explanation to follow following steps:"
-    1. Analyze the substructures in the precursor that are crucial for the chemical reaction.
-    2. Infer the type of chemical reaction and the mechanism given the substructures in precursor.
+    1. Separate the precursor into reactant and reagent if possible.
+    2. Infer the mechanism suggested by how the reagent acts or the reaction conditions.
+    3. Derive the product in SMILES format.
 
 """
 
@@ -53,6 +54,7 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
             system_message += f""" Specifically, you should generate the explanation to follow following steps:
     1. Analyze the substructures in the product that are crucial for the chemical reaction.
     2. Infer the type of chemical reaction and the mechanism given the functional groups in product.
+    3. Infer the reactant (in SMILES format) that could enable such transformations.
 
 """
 
@@ -62,6 +64,7 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
             system_message += f""" Specifically, you should generate the explanation to follow following steps:
     1. Compare the reactant and product to identify any functional groups or bonds that have changed.
     2. Infer the general mechanism that could facilitate such transformations.
+    3. Infer the reagent (in SMILES format) that could enable such transformations.
 
 """
 
@@ -71,6 +74,7 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
             system_message += f""" Specifically, you should generate the explanation to follow following steps:
     1. Compare the reactant and product to identify any functional groups or bonds that have changed.
     2. Infer the general mechanism that could facilitate such transformations.
+    3. Infer the catalyst (in SMILES format) that could enable such transformations.
 
 """
 
@@ -80,6 +84,7 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
             system_message += f""" Specifically, you should generate the explanation to follow following steps:
     1. Compare the reactant and product to identify any functional groups or bonds that have changed.
     2. Infer the general mechanism that could facilitate such transformations.
+    3. Infer the solvent (in SMILES format) that could enable such transformations.
 
 """
     else:
@@ -118,9 +123,8 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
 
 # Important rules:
     - You are fully aware of the above information, but when responding to the user, you should answer as if you are reasoning or deducing it.
-    - Each step must be divided into sections. (###Step 1: ..., ### Step 2: ...)
-    - Each section must be less than 100 characters.
-    - Each section should be written in natural language."""
+    - Demonstrate your reasoning process step by step.
+    - Ensure logical consistency in each step and clearly connect each reasoning step."""
     if text_len == 1 or text_len == 2:
             system_message += f"""
     - Make the description{text_len_dict[text_len]}"""
@@ -137,76 +141,12 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
                 "content": data_dict['user_prompt']
             }
         ],
-        "temperature": 0.0,
+        "temperature": 0.2,
         "max_tokens": 1000
     }
     
     return body_dict
 
-
-fewshot_examples = {
-    "forward": [
-        """'### Step 1: Analyze substructures in the precursor  \nIdentify key functional groups: carbonyl, nitro, fluorine, and ether.\n\n### Step 2: Infer the type of chemical reaction  \nThe reaction likely involves a substitution or coupling mechanism due to the presence of halides.'""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-    ],
-    "retro": [
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-    ],
-    "reagent": [
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-    ],
-    "catalyst": [
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-    ],
-    "solvent": [
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-        """""",
-    ]
-
-}
 
 
 with open('CoT_experiments/data/maccskeys/MACCSKeys_descriptions.json', 'r') as f:
@@ -252,6 +192,14 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
         user_prompt = d['user_prompt'].replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "")
         data_dict = {}
         data_dict['user_prompt'] = user_prompt
+
+        d['reactants'] = "O=Cc1cc([N+](=O)[O-])c(F)cc1F"
+        d['reagents'] = "C1CCOC1.Cl.[BH4-].[Na+]"
+        d['catalyst'] = "C1CCOC1.Cl.[BH4-].[Na+]"
+        d['solvent'] = "C1CCOC1.Cl.[BH4-].[Na+]"
+        
+
+
         if d.get("precursor"):
             data_dict["precursor"] = d["precursor"]
             precursor_mol = Chem.MolFromSmiles(d["precursor"])
@@ -304,6 +252,17 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
             data_dict["predicted_reaction"] = d["predicted_reaction"]
             predicted_reaction_doc = mechanism_docs[d["predicted_reaction"]]
             data_dict["predicted_reaction_doc"] = predicted_reaction_doc
+        
+        task = "solvent"
+        if task == "retro":
+            data_dict['user_prompt'] = f"Can you list the reactants that might result in the chemical product {d['product']}?"
+        elif task == "reagent":
+            data_dict['user_prompt'] = f"Given this chemical reaction {d['reactants']}>>{d['product']}, what are some reagents that could have been used?"
+        elif task == "catalyst":
+            data_dict['user_prompt'] = f"Please suggest some possible catalysts that could have been used in the following chemical reaction {d['reactants']}>>{d['product']}."
+        elif task == "solvent":
+            data_dict['user_prompt'] = f"{d['reactants']}>>{d['product']} Please propose potential solvents that might have been utilized in the provided chemical reaction."
+
 
         if task == "forward":
             generated_substructure_fp = ((np.array(products_fp) - np.array(precursor_fp))==1)[:-1]
@@ -363,24 +322,4 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
 
 
         body_dict = get_request_body(data_dict, use_react_doc=True, use_subs=True, use_step_inst=True, text_len=2, task_name=task, model="gpt-4o-mini")
-        
-        request_dict = {
-            "custom_id": f"{task}_{split}_{i}",
-            "method": "POST",
-            "url": "/v1/chat/completions",
-            "body": body_dict
-        }
-        request_list.append(request_dict)
-        if len(request_list) == 15000:
-            # Save the request_list as jsonl file in CoT_experiments/data/openai_batch/requests/
-            with open(f"CoT_experiments/data/openai_batch/requests/{task}_{split}_batch_{batch_i}.jsonl", "w") as f:
-                for req in request_list:
-                    f.write(json.dumps(req) + "\n")
-            request_list = []
-            batch_i += 1
-    if request_list:
-        with open(f"CoT_experiments/data/openai_batch/requests/{task}_{split}_batch_{batch_i}.jsonl", "w") as f:
-            for req in request_list:
-                f.write(json.dumps(req) + "\n")
-        batch_i += 1
-    
+        break

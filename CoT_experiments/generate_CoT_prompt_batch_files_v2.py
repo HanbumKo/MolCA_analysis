@@ -400,17 +400,15 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
         data = json.load(f)
     for i, d in tqdm(enumerate(data), total=len(data)):
         data_dict = {}
-        if task == "forward":
+        if d.get("precursor"):
             data_dict["precursor"] = d["precursor"]
             precursor_mol = Chem.MolFromSmiles(d["precursor"])
             precursor_fp = list(MACCSkeys.GenMACCSKeys(precursor_mol))
-            product_mol = Chem.MolFromSmiles(d["product"])
-            product_fp = list(MACCSkeys.GenMACCSKeys(product_mol))
             precursor_fp_nonzero = [i for i, v in enumerate(precursor_fp) if v]
             precursor_subs = [subs[i] for i in precursor_fp_nonzero]
             precursor_subs_str = "\n".join(precursor_subs)
             data_dict["exist_precursor"] = precursor_subs_str
-        if task == "retro":
+        if d.get("reactants"):
             data_dict["reactants"] = d["reactants"]
             reactants_mol = Chem.MolFromSmiles(d["reactants"])
             reactants_fp = list(MACCSkeys.GenMACCSKeys(reactants_mol))
@@ -418,7 +416,7 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
             reactants_subs = [subs[i] for i in reactants_fp_nonzero]
             reactants_subs_str = "\n".join(reactants_subs)
             data_dict["exist_reactants"] = reactants_subs_str
-        if task == "reagent":
+        if d.get("reagents"):
             data_dict["reagents"] = d["reagents"]
             reagents_mol = Chem.MolFromSmiles(d["reagents"])
             reagents_fp = list(MACCSkeys.GenMACCSKeys(reagents_mol))
@@ -426,7 +424,7 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
             reagents_subs = [subs[i] for i in reagents_fp_nonzero]
             reagents_subs_str = "\n".join(reagents_subs)
             data_dict["exist_reagents"] = reagents_subs_str
-        if task == "catalyst":
+        if d.get("catalyst"):
             data_dict["catalyst"] = d["catalyst"]
             catalyst_mol = Chem.MolFromSmiles(d["catalyst"])
             catalyst_fp = list(MACCSkeys.GenMACCSKeys(catalyst_mol))
@@ -434,7 +432,7 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
             catalyst_subs = [subs[i] for i in catalyst_fp_nonzero]
             catalyst_subs_str = "\n".join(catalyst_subs)
             data_dict["exist_catalyst"] = catalyst_subs_str
-        if task == "solvent":
+        if d.get("solvent"):
             data_dict["solvent"] = d["solvent"]
             solvent_mol = Chem.MolFromSmiles(d["solvent"])
             solvent_fp = list(MACCSkeys.GenMACCSKeys(solvent_mol))
@@ -456,7 +454,6 @@ for file_name, split, task in tqdm(files, desc="Loading data", total=len(files))
             data_dict["predicted_reaction_doc"] = predicted_reaction_doc
 
         body_dict = get_request_body(data_dict, use_react_doc=True, use_subs=False, use_step_inst=True, text_len=2, task_name=task, model="gpt-4o-mini")
-        response = client.chat.completions.create(**d['body'])
         
         request_dict = {
             "custom_id": f"{task}_{split}_{i}",

@@ -1,6 +1,7 @@
 import random
 import json
 import os
+import numpy as np
 
 from openai import OpenAI
 from rdkit import Chem
@@ -323,49 +324,20 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
         if use_step_inst:
             system_message += f""" Specifically, you should generate the explanation to follow following steps:"
     1. Separate the precursor into reactant and reagent if possible.
-    2. Identify and describe the substructures involved in the reaction and their chemical characteristics that contribute to forming the product.
-    3. Infer the mechanism suggested by how the reagent acts or the reaction conditions.
-    4. Derive the product in SMILES format.
+    2. Infer the mechanism suggested by how the reagent acts or the reaction conditions.
+    3. Derive the product in SMILES format.
 
 """
-        system_message += f"""The user will provide the following information:
-    - Precursor (in SMILES format)
-    - Product (in SMILES format)"""
-        if use_subs:
-            system_message += """
-    - Substructures present in the precursor
-    - Substructures present in the product"""
-        if use_react_doc:
-            system_message += """
-    - A description of the chemical reaction and its mechanism"""
-
-
-
-
 
     elif task_name == "retro":
         system_message = "You are a retrosynthesis process explanation generator, tasked with creating a text that explains how a product can be transformed back into its reactant."
         if use_step_inst:
             system_message += f""" Specifically, you should generate the explanation to follow following steps:
-    1. Analyze the functional groups in the product that are crucial for the chemical reaction.
+    1. Analyze the substructures in the product that are crucial for the chemical reaction.
     2. Infer the type of chemical reaction and the mechanism given the functional groups in product.
     3. Infer the reactant (in SMILES format) that could enable such transformations.
 
 """
-        system_message += f"""The user will provide the following information:
-    - Reactant (in SMILES format)
-    - Product (in SMILES format)"""
-        if use_subs:
-            system_message += """
-    - Substructures present in the reactant
-    - Substructures present in the product"""
-        if use_react_doc:
-            system_message += """
-    - A description of the chemical reaction and its mechanism"""
-
-
-
-
 
     elif task_name == "reagent":
         system_message = "You are a chemical reaction explanation text generator tasked with creating reasoning for a reagent prediction task, where the goal is to infer possible reagent that enable the production of given product from specific reactant in a chemical reaction."
@@ -376,19 +348,6 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
     3. Infer the reagent (in SMILES format) that could enable such transformations.
 
 """
-        system_message += f"""The user will provide the following information:
-    - Reactant (in SMILES format)
-    - Reagent (in SMILES format)
-    - Product (in SMILES format)"""
-        if use_subs:
-            system_message += """
-    - Substructures present in the reactant
-    - Substructures present in the reagent
-    - Substructures present in the product"""
-        if use_react_doc:
-            system_message += """
-    - A description of the chemical reaction and its mechanism"""
-
 
     elif task_name == "catalyst":
         system_message = "You are a chemical reaction explanation text generator tasked with creating step-by-step reasoning for a catalyst prediction task, where the goal is to infer possible catalyst that enable the production of given product from specific reactant in a chemical reaction."
@@ -399,19 +358,6 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
     3. Infer the catalyst (in SMILES format) that could enable such transformations.
 
 """
-        system_message += f"""The user will provide the following information:
-    - Reactant (in SMILES format)
-    - Catalyst (in SMILES format)
-    - Product (in SMILES format)"""
-        if use_subs:
-            system_message += """
-    - Substructures present in the reactant
-    - Substructures present in the catalyst
-    - Substructures present in the product"""
-        if use_react_doc:
-            system_message += """
-    - A description of the chemical reaction and its mechanism"""
-
 
     elif task_name == "solvent":
         system_message = "You are a chemical reaction explanation text generator tasked with creating reasoning for a solvent prediction task, where the goal is to infer possible solvent that enable the production of given product from specific reactant in a chemical reaction."
@@ -422,65 +368,47 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
     3. Infer the solvent (in SMILES format) that could enable such transformations.
 
 """
-        system_message += f"""The user will provide the following information:
-    - Reactant (in SMILES format)
-    - Solvent (in SMILES format)
-    - Product (in SMILES format)"""
-        if use_subs:
-            system_message += """
-    - Substructures present in the reactant
-    - Substructures present in the solvent
-    - Substructures present in the product"""
-        if use_react_doc:
-            system_message += """
-    - A description of the chemical reaction and its mechanism"""
-
     else:
         raise ValueError(f"Invalid task: {task_name}")
+    
+    system_message += f"""# Information about chemical reactions that users ask about:
+"""
+    if data_dict.get("precursor"):
+        system_message += f"## Precursor (SMILES format)\n{data_dict['precursor']}\n\n"
+    if data_dict.get("reactants"):
+        system_message += f"## Reactant (SMILES format)\n{data_dict['reactants']}\n\n"
+    if data_dict.get("reagents"):
+        system_message += f"## Reagent (SMILES format)\n{data_dict['reagents']}\n\n"
+    if data_dict.get("catalyst"):
+        system_message += f"## Catalyst (SMILES format)\n{data_dict['catalyst']}\n\n"
+    if data_dict.get("solvent"):
+        system_message += f"## Solvent (SMILES format)\n{data_dict['solvent']}\n\n"
+    if data_dict.get("product"):
+        system_message += f"## Product (SMILES format)\n{data_dict['product']}\n\n"
+    
+    if use_subs:
+        if data_dict.get("generated_substructure_from_precursor"):
+            system_message += f"## Substructure newly formed in the product as a result of the reaction\n{data_dict['generated_substructure_from_precursor']}\n\n"
+        if data_dict.get("removed_substructure_from_precursor"):
+            system_message += f"## Substructure removed from the precursor as a result of the reaction\n{data_dict['removed_substructure_from_precursor']}\n\n"
+        if data_dict.get("generated_substructure_from_reactant"):
+            system_message += f"## Substructure newly formed in the product as a result of the reaction\n{data_dict['generated_substructure_from_reactant']}\n\n"
+        if data_dict.get("removed_substructure_from_reactant"):    
+            system_message += f"## Substructure removed from the reactant as a result of the reaction\n{data_dict['removed_substructure_from_reactant']}\n\n"
+    if use_react_doc:
+        if data_dict.get("predicted_reaction"):
+            system_message += f"## Explanation of the chemical reaction and its mechanism\nThe reaction is {data_dict['predicted_reaction']}. {data_dict['predicted_reaction_doc']}"
 
     system_message += f"""
 
-## Important rules:
-    - Rely solely on information provided by the user.
+
+# Important rules:
+    - You are fully aware of the above information, but when responding to the user, you should answer as if you are reasoning or deducing it.
     - Demonstrate your reasoning process step by step.
-    - Ensure logical consistency in each step and clearly connect each reasoning step.
-    - You must write assuming that {task_name_dict[task_name]} is not provided.
-    - Never mention {task_name_dict[task_name]} directly, infer it.
-    - Do not write content that includes phrases like 'the provided {task_name_dict[task_name]}.'"""
+    - Ensure logical consistency in each step and clearly connect each reasoning step."""
     if text_len == 1 or text_len == 2:
             system_message += f"""
     - Make the description{text_len_dict[text_len]}"""
-    
-    user_message = ""
-    if data_dict.get("precursor"):
-        user_message += f"### Precursor (SMILES format)\n{data_dict['precursor']}\n\n"
-    if data_dict.get("reactants"):
-        user_message += f"### Reactant (SMILES format)\n{data_dict['reactants']}\n\n"
-    if data_dict.get("reagents"):
-        user_message += f"### Reagent (SMILES format)\n{data_dict['reagents']}\n\n"
-    if data_dict.get("catalyst"):
-        user_message += f"### Catalyst (SMILES format)\n{data_dict['catalyst']}\n\n"
-    if data_dict.get("solvent"):
-        user_message += f"### Solvent (SMILES format)\n{data_dict['solvent']}\n\n"
-    if data_dict.get("product"):
-        user_message += f"### Product (SMILES format)\n{data_dict['product']}\n\n"
-    
-    if use_subs:
-        if data_dict.get("exist_precursor"):
-            user_message += f"### Substructures present in the precursor\n{data_dict['exist_precursor']}\n\n"
-        if data_dict.get("exist_reactants"):
-            user_message += f"### Substructures present in the reactant\n{data_dict['exist_reactants']}\n\n"
-        if data_dict.get("exist_reagents"):
-            user_message += f"### Substructures present in the reagent\n{data_dict['exist_reagents']}\n\n"
-        if data_dict.get("exist_catalyst"):
-            user_message += f"### Substructures present in the catalyst\n{data_dict['exist_catalyst']}\n\n"
-        if data_dict.get("exist_solvent"):
-            user_message += f"### Substructures present in the solvent\n{data_dict['exist_solvent']}\n\n"
-        if data_dict.get("exist_product"):
-            user_message += f"### Substructures present in the product\n{data_dict['exist_product']}\n\n"
-    if use_react_doc:
-        if data_dict.get("predicted_reaction"):
-            user_message += f"### Explanation of the chemical reaction and its mechanism\nThe reaction is {data_dict['predicted_reaction']}. {data_dict['predicted_reaction_doc']}"
 
     body_dict = {
         "model": model,
@@ -491,7 +419,7 @@ def get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_le
             },
             {
                 "role": "user",
-                "content": user_message
+                "content": data_dict['user_prompt']
             }
         ],
         "temperature": 0.2,
@@ -571,17 +499,21 @@ ground_truth_all = fewshot_example_all["ground_truths"]
 
 
 all_combinations = []
-for use_react_doc in [True, False]:
-    for use_subs in [True, False]:
-        for use_step_inst in [True, False]:
-            for text_len in [0, 1, 2]:
+# for use_react_doc in [True, False]:
+for use_react_doc in [True]:
+    # for use_subs in [True, False]:
+    for use_subs in [True]:
+        # for use_step_inst in [True, False]:
+        for use_step_inst in [True]:
+            # for text_len in [0, 1, 2]:
+            for text_len in [2]:
                 all_combinations.append((use_react_doc, use_subs, use_step_inst, text_len))
 
 for use_react_doc, use_subs, use_step_inst, text_len in all_combinations:
     reasoning_texts = {task_name: [[], [], [], []] for task_name in task_names}
     combination_str = f"{use_react_doc}_{use_subs}_{use_step_inst}_{text_len}"
-    if combination_str in fewshot_example_all:
-        continue
+    # if combination_str in fewshot_example_all:
+    #     continue
     for task_name in task_names:
         file_name = f"CoT_experiments/data/presto_reasoning_data/{task_name}/train.json"
         with open(file_name, 'r') as f:
@@ -596,6 +528,7 @@ for use_react_doc, use_subs, use_step_inst, text_len in all_combinations:
                 assert user_prompt == d['user_prompt'].replace("[START_I_SMILES]", "").replace("[END_I_SMILES]", "")
 
                 data_dict = {}
+                data_dict['user_prompt'] = user_prompt
                 if d.get("precursor"):
                     data_dict["precursor"] = d["precursor"]
                     precursor_mol = Chem.MolFromSmiles(d["precursor"])
@@ -649,20 +582,76 @@ for use_react_doc, use_subs, use_step_inst, text_len in all_combinations:
                     predicted_reaction_doc = mechanism_docs[d["predicted_reaction"]]
                     data_dict["predicted_reaction_doc"] = predicted_reaction_doc
 
+                if task_name == "forward":
+                    generated_substructure_fp = ((np.array(products_fp) - np.array(precursor_fp))==1)[:-1]
+                    generated_substructure_fp_nonzero = [i for i, v in enumerate(generated_substructure_fp) if v]
+                    generated_substructure_subs = [subs[i] for i in generated_substructure_fp_nonzero]
+                    generated_substructure_subs_str = "\n".join(generated_substructure_subs)
+                    removed_substructure_fp = ((np.array(precursor_fp) - np.array(products_fp))==1)[:-1]
+                    removed_substructure_fp_nonzero = [i for i, v in enumerate(removed_substructure_fp) if v]
+                    removed_substructure_subs = [subs[i] for i in removed_substructure_fp_nonzero]
+                    removed_substructure_subs_str = "\n".join(removed_substructure_subs)
+                    data_dict["generated_substructure_from_precursor"] = generated_substructure_subs_str
+                    data_dict["removed_substructure_from_precursor"] = removed_substructure_subs_str
+                elif task_name == "retro":
+                    generated_substructure_fp = ((np.array(products_fp) - np.array(reactants_fp))==1)[:-1]
+                    generated_substructure_fp_nonzero = [i for i, v in enumerate(generated_substructure_fp) if v]
+                    generated_substructure_subs = [subs[i] for i in generated_substructure_fp_nonzero]
+                    generated_substructure_subs_str = "\n".join(generated_substructure_subs)
+                    removed_substructure_fp = ((np.array(reactants_fp) - np.array(products_fp))==1)[:-1]
+                    removed_substructure_fp_nonzero = [i for i, v in enumerate(removed_substructure_fp) if v]
+                    removed_substructure_subs = [subs[i] for i in removed_substructure_fp_nonzero]
+                    removed_substructure_subs_str = "\n".join(removed_substructure_subs)
+                    data_dict["generated_substructure_from_reactant"] = generated_substructure_subs_str
+                    data_dict["removed_substructure_from_reactant"] = removed_substructure_subs_str
+                elif task_name == "reagent":
+                    generated_substructure_fp = ((np.array(products_fp) - np.array(reactants_fp))==1)[:-1]
+                    generated_substructure_fp_nonzero = [i for i, v in enumerate(generated_substructure_fp) if v]
+                    generated_substructure_subs = [subs[i] for i in generated_substructure_fp_nonzero]
+                    generated_substructure_subs_str = "\n".join(generated_substructure_subs)
+                    removed_substructure_fp = ((np.array(reactants_fp) - np.array(products_fp))==1)[:-1]
+                    removed_substructure_fp_nonzero = [i for i, v in enumerate(removed_substructure_fp) if v]
+                    removed_substructure_subs = [subs[i] for i in removed_substructure_fp_nonzero]
+                    removed_substructure_subs_str = "\n".join(removed_substructure_subs)
+                    data_dict["generated_substructure_from_reactant"] = generated_substructure_subs_str
+                    data_dict["removed_substructure_from_reactant"] = removed_substructure_subs_str
+                elif task_name == "catalyst":
+                    generated_substructure_fp = ((np.array(products_fp) - np.array(reactants_fp))==1)[:-1]
+                    generated_substructure_fp_nonzero = [i for i, v in enumerate(generated_substructure_fp) if v]
+                    generated_substructure_subs = [subs[i] for i in generated_substructure_fp_nonzero]
+                    generated_substructure_subs_str = "\n".join(generated_substructure_subs)
+                    removed_substructure_fp = ((np.array(reactants_fp) - np.array(products_fp))==1)[:-1]
+                    removed_substructure_fp_nonzero = [i for i, v in enumerate(removed_substructure_fp) if v]
+                    removed_substructure_subs = [subs[i] for i in removed_substructure_fp_nonzero]
+                    removed_substructure_subs_str = "\n".join(removed_substructure_subs)
+                    data_dict["generated_substructure_from_reactant"] = generated_substructure_subs_str
+                    data_dict["removed_substructure_from_reactant"] = removed_substructure_subs_str
+                elif task_name == "solvent":
+                    generated_substructure_fp = ((np.array(products_fp) - np.array(reactants_fp))==1)[:-1]
+                    generated_substructure_fp_nonzero = [i for i, v in enumerate(generated_substructure_fp) if v]
+                    generated_substructure_subs = [subs[i] for i in generated_substructure_fp_nonzero]
+                    generated_substructure_subs_str = "\n".join(generated_substructure_subs)
+                    removed_substructure_fp = ((np.array(reactants_fp) - np.array(products_fp))==1)[:-1]
+                    removed_substructure_fp_nonzero = [i for i, v in enumerate(removed_substructure_fp) if v]
+                    removed_substructure_subs = [subs[i] for i in removed_substructure_fp_nonzero]
+                    removed_substructure_subs_str = "\n".join(removed_substructure_subs)
+                    data_dict["generated_substructure_from_reactant"] = generated_substructure_subs_str
+                    data_dict["removed_substructure_from_reactant"] = removed_substructure_subs_str
+
                 body_dict = get_request_body(data_dict, use_react_doc,  use_subs, use_step_inst, text_len, task_name, model="gpt-4o-mini")
                 response = client.chat.completions.create(**body_dict)
                 response_text = response.choices[0].message.content
                 reasoning_texts[task_name][seed].append(response_text)
-                # print()
+                print()
                 print(f"combination: use_react_doc={use_react_doc}, use_subs={use_subs}, use_step_inst={use_step_inst}, text_len={text_len}")
                 print(f"{task_name} {seed} {n_shot}")
                 print("="*100)
-                # print(response_text)
+                print(response_text)
                 # print(body_dict["messages"][0]["content"])
                 # print("-"*100)
                 # print(body_dict["messages"][1]["content"])
-                # print("="*100)
-                # print()
+                print("="*100)
+                print()
     fewshot_example_all[combination_str] = reasoning_texts
 
     with open("CoT_experiments/data/fewshot_example_all.json", "w") as f:

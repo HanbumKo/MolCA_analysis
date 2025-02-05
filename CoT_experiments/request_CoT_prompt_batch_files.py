@@ -134,12 +134,15 @@ for jsonl_file in jsonl_files:
         f.write(file_response.text)
 
 
+
+
+
 total_price = 0.
 # Save to data
-for task_name in ["forward", "retro", "reagent", "catalyst", "solvent"]:
+# for task_name in ["forward", "retro", "reagent", "catalyst", "solvent"]:
+#     for split in ["train", "valid", "test"]:
+for task_name in ["forward"]:
     for split in ["train", "valid", "test"]:
-# for task_name in ["retro"]:
-#     for split in ["test"]:
         jsonl_files = sorted(glob(f"CoT_experiments/data/openai_batch/responses/{task_name}_{split}_batch_*.jsonl"))
         # if task_name == "forward" and split == "valid":
         #     jsonl_files = sorted(glob(f"CoT_experiments/data/openai_batch/responses/{task_name}_train_batch_*.jsonl"))
